@@ -4,7 +4,7 @@ import { loginTokens, sessions, users } from "@/db/schema";
 import { randomToken, sha256 } from "./crypto";
 import { AppError, invalid } from "./errors";
 import { displayName, email as emailSchema } from "./inputs";
-import { sendMail } from "./mailer";
+import { isEmailConfigured, sendMail } from "./mailer";
 
 export const LOGIN_TOKEN_TTL_MS = 15 * 60_000;
 export const SESSION_TTL_MS = 30 * 86_400_000;
@@ -26,6 +26,9 @@ export function safeNextPath(next: string | null | undefined): string | null {
  */
 export async function requestLoginLink(rawEmail: string, rawNext?: string | null): Promise<void> {
   const email = emailSchema.parse(rawEmail);
+  if (!isEmailConfigured()) {
+    throw new AppError("EMAIL_NOT_CONFIGURED", "ارسال ایمیل هنوز روی سرور پیکربندی نشده است. لطفاً بعداً تلاش کنید.");
+  }
   const db = getDb();
   const since = new Date(Date.now() - LOGIN_TOKEN_TTL_MS);
   const [{ n }] = await db

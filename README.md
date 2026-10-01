@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# tavalod (تولد)
 
-## Getting Started
+هماهنگی جمع دوستان، از برنامه‌ریزی تا تسویه — یک PWA فارسی و موبایل‌محور.
 
-First, run the development server:
+**نسخه فعلی (مرحله ۱ — هسته مالی):** گروه، دعوت، عضو مهمان و اتصال آن با لینک اختصاصی یک‌بارمصرف، رویداد، هزینه با چهار نوع تقسیم و چند پرداخت‌کننده، برگشت خرید جزئی/کامل، مانده با توضیح قلم‌به‌قلم، «پیشنهاد تسویه با انتقال کمتر»، تسویه با تأیید دریافت‌کننده و تخصیص به رویدادها، سابقه تغییرات، اعلان داخل اپ، ثبت آفلاین هزینه و تسویه، ورود با لینک ایمیلی.
+
+اصل محصول: **حساب‌ها همیشه درست بمانند و هر عدد قابل توضیح باشد.** همه محاسبات مالی در `src/domain` با `bigint` و تست‌های property-based انجام می‌شود و تریگرهای دیتابیس جلوی ثبت حالت نامتوازن را می‌گیرند.
+
+## اجرای محلی
+
+پیش‌نیاز: Node 24، Docker.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm ci
+cp .env.example .env.local      # EMAIL_TRANSPORT=console لینک ورود را در ترمینال چاپ می‌کند
+npm run db:up                   # Postgres روی 127.0.0.1:5433
+npm run db:migrate
+npm run dev                     # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## تست
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm test               # unit + integration (دیتابیس tavalod_test پاک و از نو ساخته می‌شود)
+npm run e2e            # Playwright روی ویوپورت موبایل (دیتابیس tavalod_e2e)
+npm run typecheck && npm run lint
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## ساختار
 
-## Learn More
+| مسیر | محتوا |
+|---|---|
+| `src/domain` | منطق مالی خالص: تقسیم، مانده، تسویه، تخصیص، برگشت، توضیح مانده |
+| `src/db` | schema (Drizzle) — migrationها در `drizzle/` |
+| `src/server` | سرویس‌ها: تراکنش، قفل گروه، idempotency، audit، اعلان، احراز هویت |
+| `src/app` | صفحات و server actionها؛ `api/sync` برای صف آفلاین، `api/health` |
+| `src/lib/offline` | صف IndexedDB جدا برای هر حساب |
+| `deploy/` | Dockerfile، compose، اسکریپت‌های استقرار/بکاپ/rollback |
+| `docs/operations.md` | راهنمای استقرار، لاگ، بکاپ، بازیابی و rollback |
 
-To learn more about Next.js, take a look at the following resources:
+## نقشه راه
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+۲. تولد و دورهمی (ویش‌لیست، هماهنگی مخفی هدیه، تأیید حضور، نظرسنجی، تعهد مشارکت، برآورد کیک) · ۳. اقساط توافقی، کار خیر، یادآوری و Web Push، خوش‌حسابی، پیشنهاد تفریح، AI · ۴. اتصال قیمت (ترب)، درگاه پرداخت، کیف پول واقعی.

@@ -1,0 +1,113 @@
+# tavalod production stack. Always run with the explicit project name and env file:
+#   docker compose -p tavalod -f compose.yml --env-file release.env <command>
+# Only `web` joins the shared Traefik network; the database and backups stay on tavalod's own
+# internal network with no route to the internet and no published ports.
+name: tavalod
+
+x-app: &app
+  image: tavalod:${TAVALOD_RELEASE:?set TAVALOD_RELEASE}
+  env_file:
+    - '${TAVALOD_SHARED:-/home/deploy/apps/tavalod/shared}/app.env'
+  environment:
+    APP_RELEASE: ${TAVALOD_RELEASE}
+  restart: unless-stopped
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  logging:
+    driver: json-file
+    options: { max-size: '10m', max-file: '3' }
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:16-alpine
+    env_file:
+      - '${TAVALOD_SHARED:-/home/deploy/apps/tavalod/shared}/db.env'
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      internal:
+        # Unique name so it can never be confused with another project's `db`.
+        aliases: [tavalod-db]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U tavalod -d tavalod']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    shm_size: 128mb
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' }
+    deploy:
+      resources:
+        limits: { cpus: '1.0', memory: 512M, pids: 200 }
+
+  web:
+    <<: *app
+    networks: [internal, proxy]
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/api/health']
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits: { cpus: '1.0', memory: 512M, pids: 256 }
+    labels:
+      traefik.enable: 'true'
+      traefik.docker.network: internal_network
+      traefik.http.routers.tavalod-web.rule: Host(`tavalod.example.com`)
+      traefik.http.routers.tavalod-web.entrypoints: websecure
+      traefik.http.routers.tavalod-web.tls: 'true'
+      traefik.http.routers.tavalod-web.tls.certresolver: letsencrypt
+      traefik.http.routers.tavalod-web.service: tavalod-web
+      traefik.http.services.tavalod-web.loadbalancer.server.port: '3000'
+
+  backup:
+    image: postgres:16-alpine
+    env_file:
+      - '${TAVALOD_SHARED:-/home/deploy/apps/tavalod/shared}/db.env'
+    environment:
+      PGHOST: tavalod-db
+      PGUSER: tavalod
+      PGDATABASE: tavalod
+      BACKUP_RETENTION_DAYS: '14'
+    user: '1000:1000'
+    entrypoint: ['/bin/sh', '/scripts/backup-loop.sh']
+    volumes:
+      - '${TAVALOD_BACKUPS:-/home/deploy/apps/tavalod/backups}:/backups'
+      - ./backup-loop.sh:/scripts/backup-loop.sh:ro
+    networks: [internal]
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options: { max-size: '5m', max-file: '2' }
+    deploy:
+      resources:
+        limits: { cpus: '0.25', memory: 256M, pids: 64 }
+
+  migrate:
+    <<: *app
+    profiles: [tools]
+    restart: 'no'
+    command: ['node', 'scripts/migrate.mjs']
+    networks: [internal]
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
+    internal: true
+  proxy:
+    external: true
+    name: internal_network
