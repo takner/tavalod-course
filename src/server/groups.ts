@@ -2,7 +2,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { groupMembers, groups, invites, settlements, users } from "@/db/schema";
 import { computeBalances } from "@/domain/ledger";
-import { lockGroup, requireAdmin, requireMember, type Actor } from "./access";
+import { assertId, lockGroup, requireAdmin, requireMember, type Actor } from "./access";
 import { notifyMembers, writeAudit } from "./audit";
 import { randomToken, sha256 } from "./crypto";
 import { forbidden, invalid, notFound } from "./errors";
@@ -36,6 +36,7 @@ export async function addGuestMember(actor: Actor, groupId: string, rawName: str
 }
 
 export async function renameMember(actor: Actor, groupId: string, memberId: string, rawName: string): Promise<void> {
+  assertId(memberId, "عضو");
   const name = displayName.parse(rawName);
   await getDb().transaction(async (tx) => {
     const me = await requireMember(tx, groupId, actor);
@@ -56,6 +57,7 @@ export async function renameMember(actor: Actor, groupId: string, memberId: stri
  * no pending settlements, so nobody's money silently disappears.
  */
 export async function removeMember(actor: Actor, groupId: string, memberId: string): Promise<void> {
+  assertId(memberId, "عضو");
   await getDb().transaction(async (tx) => {
     const me = await requireMember(tx, groupId, actor);
     await lockGroup(tx, groupId);
@@ -91,6 +93,7 @@ export async function removeMember(actor: Actor, groupId: string, memberId: stri
 }
 
 export async function setMemberRole(actor: Actor, groupId: string, memberId: string, role: "admin" | "member") {
+  assertId(memberId, "عضو");
   await getDb().transaction(async (tx) => {
     const me = await requireMember(tx, groupId, actor);
     if (me.role !== "owner") throw forbidden("فقط مالک گروه می‌تواند نقش‌ها را تغییر دهد.");
@@ -172,6 +175,7 @@ export async function createClaimInvite(
 }
 
 export async function revokeInvite(actor: Actor, groupId: string, inviteId: string): Promise<void> {
+  assertId(inviteId, "دعوت");
   await getDb().transaction(async (tx) => {
     await requireAdmin(tx, groupId, actor);
     await tx

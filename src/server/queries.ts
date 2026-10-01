@@ -23,7 +23,7 @@ import {
 } from "@/domain/ledger";
 import { refundableRemaining } from "@/domain/refund";
 import { suggestTransfers, type Transfer } from "@/domain/simplify";
-import { isAdmin, requireMember, type Actor, type MemberRow } from "./access";
+import { assertId, isAdmin, requireMember, type Actor, type MemberRow } from "./access";
 import { notFound } from "./errors";
 import { getExpenseRecord } from "./expenses";
 import { loadGroupLedger } from "./ledger";
@@ -160,6 +160,7 @@ export async function getGroupMembersForForm(actor: Actor, groupId: string) {
 
 export async function getEventView(actor: Actor, groupId: string, eventId: string) {
   const db = getDb();
+  assertId(eventId, "رویداد");
   const me = await requireMember(db, groupId, actor);
   const [ev] = await db
     .select()
@@ -239,6 +240,8 @@ export async function getExpenseView(actor: Actor, groupId: string, expenseId: s
 }
 
 export async function getBalanceExplanation(actor: Actor, groupId: string, memberId: string, eventId?: string) {
+  assertId(memberId, "عضو");
+  if (eventId !== undefined) assertId(eventId, "رویداد");
   const db = getDb();
   const me = await requireMember(db, groupId, actor);
   const rows = await membersOf(groupId);

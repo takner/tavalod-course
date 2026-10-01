@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { eventParticipants, events, settlementAllocations, settlements } from "@/db/schema";
 import { computeScopedBalances, isScopeSettled } from "@/domain/ledger";
-import { isAdmin, lockGroup, requireActiveMembers, requireMember, type Actor } from "./access";
+import { assertId, isAdmin, lockGroup, requireActiveMembers, requireMember, type Actor } from "./access";
 import { writeAudit } from "./audit";
 import { forbidden, invalid, notFound } from "./errors";
 import { eventInput } from "./inputs";
@@ -37,6 +37,8 @@ export async function createEvent(actor: Actor, raw: unknown): Promise<{ eventId
 
 /** Being invited to / participating in an event never creates a debt — only expenses do. */
 export async function setParticipants(actor: Actor, eventId: string, memberIds: string[]): Promise<void> {
+  assertId(eventId, "رویداد");
+  memberIds.forEach((id) => assertId(id, "عضو"));
   await getDb().transaction(async (tx) => {
     const [ev] = await tx.select().from(events).where(eq(events.id, eventId)).limit(1);
     if (!ev) throw notFound("رویداد");
@@ -61,6 +63,7 @@ export async function setParticipants(actor: Actor, eventId: string, memberIds: 
  * - cancel: keeps every recorded expense; money comes back through refunds.
  */
 export async function changeEventStatus(actor: Actor, eventId: string, action: "close" | "reopen" | "cancel"): Promise<void> {
+  assertId(eventId, "رویداد");
   await getDb().transaction(async (tx) => {
     const [peek] = await tx.select().from(events).where(eq(events.id, eventId)).limit(1);
     if (!peek) throw notFound("رویداد");

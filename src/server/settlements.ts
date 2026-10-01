@@ -3,7 +3,7 @@ import { getDb } from "@/db";
 import { events, settlementAllocations, settlements } from "@/db/schema";
 import { autoAllocate, validateAllocations, type Allocation } from "@/domain/allocate";
 import { computeScopedBalances } from "@/domain/ledger";
-import { isAdmin, lockGroup, requireActiveMembers, requireMember, type Actor, type MemberRow } from "./access";
+import { assertId, isAdmin, lockGroup, requireActiveMembers, requireMember, type Actor, type MemberRow } from "./access";
 import { notifyMembers, writeAudit } from "./audit";
 import { forbidden, invalid, notFound } from "./errors";
 import { claimIdempotencyKey } from "./idempotency";
@@ -107,6 +107,7 @@ export async function decideSettlement(
   settlementId: string,
   decision: "confirm" | "reject",
 ): Promise<void> {
+  assertId(settlementId, "تسویه");
   await getDb().transaction(async (tx) => {
     const [peek] = await tx.select().from(settlements).where(eq(settlements.id, settlementId)).limit(1);
     if (!peek) throw notFound("تسویه");
@@ -144,6 +145,8 @@ export async function previewAllocation(
   toMemberId: string,
   amount: bigint,
 ): Promise<Allocation[]> {
+  assertId(fromMemberId, "عضو");
+  assertId(toMemberId, "عضو");
   const db = getDb();
   await requireMember(db, groupId, actor);
   const ledger = await loadGroupLedger(db, groupId);

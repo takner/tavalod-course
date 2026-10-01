@@ -3,7 +3,7 @@ import { getDb, type Tx } from "@/db";
 import { events, expensePayers, expenseShares, expenses } from "@/db/schema";
 import { assertRefundAmount, defaultRefundSplit, refundableRemaining } from "@/domain/refund";
 import { computeShares, validatePayers, type MemberAmount } from "@/domain/split";
-import { isAdmin, lockGroup, requireActiveMembers, requireMember, type Actor } from "./access";
+import { assertId, isAdmin, lockGroup, requireActiveMembers, requireMember, type Actor } from "./access";
 import { notifyMembers, writeAudit } from "./audit";
 import { AppError, forbidden, invalid, notFound } from "./errors";
 import { claimIdempotencyKey } from "./idempotency";
@@ -145,6 +145,7 @@ export async function updateExpense(
   expectedVersion: number,
   raw: unknown,
 ): Promise<{ version: number }> {
+  assertId(expenseId, "هزینه");
   const input = expenseInput.parse(raw);
   return getDb().transaction(async (tx) => {
     const [peek] = await tx.select({ groupId: expenses.groupId }).from(expenses).where(eq(expenses.id, expenseId)).limit(1);
@@ -205,6 +206,7 @@ export async function updateExpense(
 
 /** Soft delete. History is kept; balances simply stop counting the expense. */
 export async function deleteExpense(actor: Actor, expenseId: string, expectedVersion: number): Promise<void> {
+  assertId(expenseId, "هزینه");
   await getDb().transaction(async (tx) => {
     const [peek] = await tx.select({ groupId: expenses.groupId }).from(expenses).where(eq(expenses.id, expenseId)).limit(1);
     if (!peek) throw notFound("هزینه");
@@ -311,6 +313,7 @@ export async function createRefund(
 }
 
 export async function getExpenseRecord(actor: Actor, expenseId: string): Promise<ExpenseRecord> {
+  assertId(expenseId, "هزینه");
   return getDb().transaction(async (tx) => {
     const rec = await loadExpense(tx, expenseId);
     if (!rec) throw notFound("هزینه");
