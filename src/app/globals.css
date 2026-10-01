@@ -1,43 +1,24 @@
 @import "tailwindcss";
 
+/* Light, shopping-app style theme: grey canvas, white blocks, red accent. */
 :root {
-  --bg: #f6f7f5;
+  color-scheme: light;
+  --bg: #f0f0f1;
   --surface: #ffffff;
-  --surface-2: #f0f2ef;
-  --border: #e2e5e0;
-  --text: #1c2321;
-  --muted: #5f6b67;
-  --primary: #0f766e;
-  --primary-strong: #0b5f58;
-  --primary-soft: #e3f2ef;
+  --surface-2: #f5f5f6;
+  --border: #e0e0e2;
+  --text: #23254e;
+  --muted: #81858b;
+  --primary: #ef4056;
+  --primary-strong: #d8304a;
+  --primary-soft: #fdecee;
   --on-primary: #ffffff;
-  --positive: #15803d;
-  --positive-soft: #e7f5ea;
-  --negative: #b42318;
-  --negative-soft: #fbeceb;
-  --warning: #a15c07;
-  --warning-soft: #fdf3e2;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #111615;
-    --surface: #1a201f;
-    --surface-2: #222a28;
-    --border: #2e3735;
-    --text: #e8ecea;
-    --muted: #9aa6a2;
-    --primary: #2bb3a5;
-    --primary-strong: #4cc7b9;
-    --primary-soft: #183330;
-    --on-primary: #06201d;
-    --positive: #4ade80;
-    --positive-soft: #16301f;
-    --negative: #f87171;
-    --negative-soft: #3a1a18;
-    --warning: #fbbf24;
-    --warning-soft: #3a2c10;
-  }
+  --positive: #00a049;
+  --positive-soft: #e5f6ec;
+  --negative: #d32f2f;
+  --negative-soft: #fdecec;
+  --warning: #b86e00;
+  --warning-soft: #fff4e0;
 }
 
 @theme inline {
@@ -77,10 +58,10 @@ body {
 }
 
 @utility card {
-  @apply rounded-2xl border border-border bg-surface p-4;
+  @apply rounded-2xl bg-surface p-4 shadow-[0_1px_3px_rgba(35,37,78,0.06)];
 }
 @utility btn {
-  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
 }
 @utility btn-primary {
   @apply btn bg-primary text-on-primary hover:bg-primary-strong;
@@ -95,7 +76,7 @@ body {
   @apply btn text-primary hover:bg-primary-soft;
 }
 @utility input {
-  @apply block min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-base text-text outline-none placeholder:text-muted/70 focus:border-primary focus:ring-2 focus:ring-primary/20;
+  @apply block min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-base text-text outline-none placeholder:text-muted/70 focus:border-primary focus:ring-2 focus:ring-primary/15;
 }
 @utility label {
   @apply mb-1.5 block text-sm font-medium text-text;
@@ -105,4 +86,10 @@ body {
 }
 @utility chip {
   @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+}
+
+/* Horizontal snap carousel (banners, shortcut rows). */
+@utility snap-row {
+  @apply flex snap-x snap-mandatory gap-3 overflow-x-auto;
+  scrollbar-width: none;
 }

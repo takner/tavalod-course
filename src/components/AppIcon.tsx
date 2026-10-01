@@ -9,7 +9,7 @@ export function AppIconArt({ size, padding = 0 }: { size: number; padding?: numb
       style={{
         width: size,
         height: size,
-        background: "#0f766e",
+        background: "#ef4056",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -20,7 +20,7 @@ export function AppIconArt({ size, padding = 0 }: { size: number; padding?: numb
         <div style={{ width: s(6), height: s(10), background: "#fde68a", borderRadius: s(3) }} />
         <div style={{ width: s(4), height: s(12), background: "#ffffff", marginBottom: s(2) }} />
         <div style={{ width: s(44), height: s(16), background: "#ffffff", borderRadius: `${s(6)}px ${s(6)}px 0 0` }} />
-        <div style={{ width: s(44), height: s(4), background: "#99f6e4" }} />
+        <div style={{ width: s(44), height: s(4), background: "#fecdd3" }} />
         <div style={{ width: s(58), height: s(18), background: "#ffffff", borderRadius: `${s(4)}px ${s(4)}px ${s(6)}px ${s(6)}px` }} />
       </div>
     </div>

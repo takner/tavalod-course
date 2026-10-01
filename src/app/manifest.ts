@@ -10,8 +10,8 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/groups",
     scope: "/",
     display: "standalone",
-    background_color: "#f6f7f5",
-    theme_color: "#0f766e",
+    background_color: "#f0f0f1",
+    theme_color: "#ffffff",
     icons: [
       { src: "/pwa-icon/192", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/pwa-icon/512", sizes: "512x512", type: "image/png", purpose: "any" },

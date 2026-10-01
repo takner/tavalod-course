@@ -3,6 +3,8 @@ import Link from "next/link";
 import { decideSettlementAction } from "@/app/actions";
 import { ActionButton } from "@/components/forms";
 import { PendingOps } from "@/components/PendingOps";
+import { CalendarIcon, PlusIcon, ReceiptIcon, ScaleIcon, UsersIcon } from "@/components/icons";
+import { Shortcut } from "@/components/Shortcut";
 import { Balance, balanceHint, Chip, EmptyState, Money, PageHeader } from "@/components/ui";
 import { formatToman } from "@/domain/money";
 import { EVENT_STATUS_LABELS, EVENT_TYPE_LABELS, formatJalaliDate, formatJalaliDateTime, METHOD_LABELS } from "@/lib/format";
@@ -12,6 +14,8 @@ import { getActivity, getGroupView } from "@/server/queries";
 import { describeAudit } from "./describe";
 
 export const metadata: Metadata = { title: "گروه" };
+
+const fa = (n: number) => new Intl.NumberFormat("fa-IR").format(n);
 
 const TABS = [
   { key: "events", label: "رویدادها" },
@@ -26,6 +30,7 @@ export default async function GroupPage(props: PageProps<"/groups/[groupId]">) {
   const user = await requireUser(`/groups/${groupId}`);
   const actor = { userId: user.id };
   const view = await orNotFound(getGroupView(actor, groupId));
+  const base = `/groups/${groupId}`;
   const name = (id: string) => view.members.find((m) => m.id === id)?.name ?? "—";
   const myBalance = view.balances.get(view.me.id) ?? 0n;
   const mySuggestions = view.suggestions.filter((t) => t.fromMemberId === view.me.id || t.toMemberId === view.me.id);
@@ -33,31 +38,35 @@ export default async function GroupPage(props: PageProps<"/groups/[groupId]">) {
 
   return (
     <>
-      <PageHeader
-        title={view.group.name}
-        back={{ href: "/groups", label: "گروه‌ها" }}
-        action={
-          <Link href={`/groups/${groupId}/members`} className="btn-secondary min-h-9 px-3 text-xs">
-            اعضا ({new Intl.NumberFormat("fa-IR").format(view.members.filter((m) => m.active).length)})
-          </Link>
-        }
-      />
+      <PageHeader title={view.group.name} back={{ href: "/groups", label: "خانه" }} />
 
-      <section className="card mb-4 flex items-center justify-between">
-        <div>
-          <p className="text-xs text-muted">مانده من در این گروه</p>
-          <Link href={`/groups/${groupId}/balance/${view.me.id}`} className="text-lg">
-            <Balance value={myBalance} />
-          </Link>
-          <p className="text-xs text-muted">{balanceHint(myBalance)} · برای جزئیات بزنید</p>
-        </div>
-        <div className="flex flex-col gap-2">
-          <Link href={`/groups/${groupId}/expenses/new`} className="btn-primary min-h-10">
-            + هزینه
-          </Link>
-          <Link href={`/groups/${groupId}/settle`} className="btn-secondary min-h-10">
-            تسویه
-          </Link>
+      <Link
+        href={`${base}/balance/${view.me.id}`}
+        className="relative mb-4 block overflow-hidden rounded-2xl bg-gradient-to-l from-[#ef4056] to-[#ff7a59] p-5 text-white"
+      >
+        <span className="absolute -top-8 -left-8 size-32 rounded-full bg-white/15" aria-hidden />
+        <p className="text-sm text-white/85">مانده من در این گروه</p>
+        <p className="mt-1 text-2xl font-black tabular">{formatToman(myBalance, { signed: true })}</p>
+        <p className="mt-1 text-xs text-white/85">{balanceHint(myBalance)} · برای دیدن قلم‌به‌قلم بزنید</p>
+      </Link>
+
+      <section aria-label="دسترسی سریع" className="card mb-4 px-2 py-4">
+        <div className="flex justify-around gap-1">
+          <Shortcut href={`${base}/expenses/new`} label="هزینه جدید" color="bg-[#ef4056]" icon={<ReceiptIcon size={26} />} />
+          <Shortcut
+            href={`${base}/settle`}
+            label="تسویه"
+            color="bg-[#00897b]"
+            icon={<ScaleIcon size={26} />}
+            badge={needsMe.length > 0 ? `${fa(needsMe.length)} تأیید` : undefined}
+          />
+          <Shortcut href={`${base}/events/new`} label="رویداد" color="bg-[#f57c00]" icon={<CalendarIcon size={26} />} />
+          <Shortcut
+            href={`${base}/members`}
+            label={`اعضا (${fa(view.members.filter((m) => m.active).length)})`}
+            color="bg-[#3a3a3a]"
+            icon={<UsersIcon size={26} />}
+          />
         </div>
       </section>
 
@@ -108,12 +117,12 @@ export default async function GroupPage(props: PageProps<"/groups/[groupId]">) {
         )}
       </div>
 
-      <nav className="mb-4 grid grid-cols-3 gap-1 rounded-xl bg-surface-2 p-1" aria-label="بخش‌های گروه">
+      <nav className="mb-4 grid grid-cols-3 border-b border-border" aria-label="بخش‌های گروه">
         {TABS.map((t) => (
           <Link
             key={t.key}
             href={`/groups/${groupId}?tab=${t.key}`}
-            className={`rounded-lg py-2 text-center text-sm ${tab === t.key ? "bg-surface font-medium text-primary shadow-sm" : "text-muted"}`}
+            className={`-mb-px border-b-2 py-2.5 text-center text-sm ${tab === t.key ? "border-primary font-bold text-primary" : "border-transparent text-muted"}`}
             aria-current={tab === t.key ? "page" : undefined}
           >
             {t.label}
@@ -231,6 +240,14 @@ export default async function GroupPage(props: PageProps<"/groups/[groupId]">) {
       )}
 
       {tab === "activity" && <Activity groupId={groupId} actor={actor} memberName={name} />}
+
+      <Link
+        href={`${base}/expenses/new`}
+        aria-label="ثبت هزینه جدید"
+        className="fixed bottom-24 left-4 z-10 flex size-14 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/30 sm:left-[calc(50%-17rem)]"
+      >
+        <PlusIcon size={28} />
+      </Link>
     </>
   );
 }
