@@ -17,6 +17,7 @@ export default async function LoginPage(props: PageProps<"/login">) {
         <p className="mt-2 leading-8 text-muted">ایمیلتان را وارد کنید تا لینک ورود برایتان فرستاده شود. رمز عبور لازم نیست.</p>
       </div>
       <LoginForm next={nextPath} />
+      <p className="text-xs leading-6 text-muted">اگر مدیر اپ برایتان لینک ورود شخصی فرستاده، کافی است همان لینک را باز کنید.</p>
     </main>
   );
 }

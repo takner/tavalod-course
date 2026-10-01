@@ -28,7 +28,7 @@ COPY --from=build --chown=app:app /app/public ./public
 # Migration runner (used by the `migrate` compose service). drizzle-orm and postgres have no
 # runtime dependencies, so copying the two packages whole is enough for the migrator.
 COPY --from=build --chown=app:app /app/drizzle ./drizzle
-COPY --from=build --chown=app:app /app/scripts/migrate.mjs ./scripts/migrate.mjs
+COPY --from=build --chown=app:app /app/scripts/migrate.mjs /app/scripts/issue-login.mjs ./scripts/
 COPY --from=deps --chown=app:app /app/node_modules/drizzle-orm ./node_modules/drizzle-orm
 COPY --from=deps --chown=app:app /app/node_modules/postgres ./node_modules/postgres
 USER app

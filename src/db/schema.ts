@@ -78,7 +78,11 @@ export const loginTokens = pgTable(
     /** Where to send the user after login (relative path only). */
     nextPath: text("next_path"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /** Set once the token has been used up (uses = max_uses). */
     usedAt: timestamp("used_at", { withTimezone: true }),
+    /** Emailed links are single-use; operator-issued links may allow a few uses (browser + installed app). */
+    maxUses: integer("max_uses").notNull().default(1),
+    uses: integer("uses").notNull().default(0),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("login_tokens_hash_uq").on(t.tokenHash), index("login_tokens_email_idx").on(t.email, t.createdAt)],

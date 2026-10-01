@@ -27,7 +27,10 @@ export function safeNextPath(next: string | null | undefined): string | null {
 export async function requestLoginLink(rawEmail: string, rawNext?: string | null): Promise<void> {
   const email = emailSchema.parse(rawEmail);
   if (!isEmailConfigured()) {
-    throw new AppError("EMAIL_NOT_CONFIGURED", "ارسال ایمیل هنوز روی سرور پیکربندی نشده است. لطفاً بعداً تلاش کنید.");
+    throw new AppError(
+      "EMAIL_NOT_CONFIGURED",
+      "ورود با ایمیل فعلاً فعال نیست. لینک ورود شخصی‌تان را از مدیر اپ بگیرید.",
+    );
   }
   const db = getDb();
   const since = new Date(Date.now() - LOGIN_TOKEN_TTL_MS);
@@ -75,9 +78,15 @@ export async function consumeLoginToken(
       .for("update")
       .limit(1);
     if (!row) throw invalid("لینک ورود معتبر نیست.");
-    if (row.usedAt) throw invalid("این لینک ورود قبلاً استفاده شده است. دوباره درخواست لینک کنید.");
+    if (row.usedAt || row.uses >= row.maxUses) {
+      throw invalid("این لینک ورود قبلاً استفاده شده است. دوباره درخواست لینک کنید.");
+    }
     if (row.expiresAt.getTime() < Date.now()) throw invalid("مهلت این لینک ورود تمام شده است. دوباره درخواست لینک کنید.");
-    await tx.update(loginTokens).set({ usedAt: new Date() }).where(eq(loginTokens.id, row.id));
+    const uses = row.uses + 1;
+    await tx
+      .update(loginTokens)
+      .set({ uses, usedAt: uses >= row.maxUses ? new Date() : null })
+      .where(eq(loginTokens.id, row.id));
 
     let [user] = await tx.select().from(users).where(eq(users.email, row.email)).limit(1);
     const isNewUser = !user;

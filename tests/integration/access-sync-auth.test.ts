@@ -197,3 +197,32 @@ describe("email sign-in", () => {
     expect(safeNextPath("/\\evil.com")).toBeNull();
   });
 });
+
+describe("operator-issued sign-in links", () => {
+  it("creates the account, allows the configured number of uses, then refuses", async () => {
+    const { execFileSync } = await import("node:child_process");
+    const out = execFileSync(process.execPath, ["scripts/issue-login.mjs", "--days", "2", "--uses", "2", "دوست آزمایشی"], {
+      env: { ...process.env, APP_URL: "https://tavalod.example" },
+      encoding: "utf8",
+    });
+    const [name, email, link] = out.trim().split("\t");
+    expect(name).toBe("دوست آزمایشی");
+    expect(email).toMatch(/@login\.tavalod\.invalid$/);
+    expect(link).toMatch(/^https:\/\/tavalod\.example\/auth\/verify\?token=/);
+    const token = new URL(link).searchParams.get("token")!;
+
+    const first = await consumeLoginToken(token);
+    const second = await consumeLoginToken(token);
+    expect(first.userId).toBe(second.userId);
+    expect(first.isNewUser).toBe(false);
+    expect(first.nextPath).toBe("/me?welcome=1");
+    await expectAppError(consumeLoginToken(token), "VALIDATION");
+    const [u] = await getDb().select().from(users).where(eq(users.email, email));
+    expect(u.name).toBe("دوست آزمایشی");
+
+    // Re-issuing for the same account keeps the existing user.
+    const again = execFileSync(process.execPath, ["scripts/issue-login.mjs", `اسم دیگر:${email}`], { encoding: "utf8" });
+    const reissued = await consumeLoginToken(new URL(again.trim().split("\t")[2]).searchParams.get("token")!);
+    expect(reissued.userId).toBe(first.userId);
+  });
+});
