@@ -2,6 +2,7 @@
 # Daily tavalod database backup (pg_dump custom format) with retention in days.
 # Runs inside the tavalod `backup` container only; touches nothing outside /backups.
 set -eu
+umask 077
 export PGPASSWORD="${POSTGRES_PASSWORD}"
 RET="${BACKUP_RETENTION_DAYS:-14}"
 while true; do

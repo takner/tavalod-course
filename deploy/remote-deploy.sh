@@ -3,6 +3,7 @@
 # /home/deploy/apps/tavalod/releases/<sha>. Touches only tavalod's own containers, image and files.
 #   bash remote-deploy.sh <sha>
 set -euo pipefail
+umask 077
 SHA="$1"
 BASE=/home/deploy/apps/tavalod
 REL="$BASE/releases/$SHA"
