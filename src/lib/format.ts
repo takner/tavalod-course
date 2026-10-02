@@ -1,5 +1,6 @@
 import { format as formatJalali, getDate, getDaysInMonth, getMonth, getYear, newDate } from "date-fns-jalali";
 import { faIR } from "date-fns-jalali/locale";
+import { utcToZoned } from "@/domain/calendar";
 import { formatToman, toPersianDigits } from "@/domain/money";
 
 export { formatToman, toPersianDigits };
@@ -74,6 +75,8 @@ export const CATEGORY_LABELS: Record<string, string> = {
   gift: "هدیه",
   shopping: "خرید",
   other: "سایر",
+  cake: "کیک",
+  venue: "محل",
 };
 
 export const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -108,4 +111,36 @@ export const ROLE_LABELS: Record<string, string> = {
   owner: "مالک",
   admin: "مدیر",
   member: "عضو",
+};
+
+/** "سه‌شنبه ۲۸ مهر ۱۴۰۵، ساعت ۱۹:۳۰" — an instant shown in the event's own time zone. */
+export function formatEventInstant(instant: Date, timeZone = "Asia/Tehran"): string {
+  const { dateIso, hhmm } = utcToZoned(instant, timeZone);
+  const day = formatJalali(parseIsoDate(dateIso), "EEEE d MMMM yyyy", { locale: faIR });
+  const zone = timeZone === "Asia/Tehran" ? "" : ` (${timeZone})`;
+  return toPersianDigits(`${day}، ساعت ${hhmm}${zone}`);
+}
+
+export function instantToLocalParts(instant: Date | null, timeZone = "Asia/Tehran"): { dateIso: string | null; hhmm: string | null } {
+  if (!instant) return { dateIso: null, hhmm: null };
+  return utcToZoned(instant, timeZone);
+}
+
+export const BUDGET_LABELS: Record<string, string> = { food: "غذا", cake: "کیک", venue: "محل", other: "سایر", gift: "هدیه (عمومی)" };
+export const RSVP_LABELS: Record<string, string> = { going: "می‌آیم", maybe: "شاید", declined: "نمی‌آیم", invited: "پاسخ نداده" };
+export const GIFT_STATUS_LABELS: Record<string, string> = {
+  proposed: "پیشنهاد",
+  collecting: "جمع‌آوری مشارکت",
+  ready_to_buy: "آماده خرید",
+  purchased: "خریداری‌شده",
+  delivered: "تحویل‌شده",
+  cancelled: "لغوشده",
+};
+export const POLL_KIND_LABELS: Record<string, string> = {
+  datetime: "تاریخ و ساعت",
+  place: "مکان",
+  activity: "نوع برنامه",
+  budget: "بازه بودجه",
+  gift: "انتخاب هدیه",
+  custom: "سؤال دلخواه",
 };

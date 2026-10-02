@@ -35,7 +35,7 @@ export async function signIn(page: Page, email: string, name?: string, next?: st
   await page.waitForURL((u) => !u.pathname.startsWith("/auth/"));
   if (name && page.url().includes("/me")) {
     await page.getByLabel("نام من").fill(name);
-    await page.getByRole("button", { name: "ذخیره" }).click();
+    await page.getByRole("button", { name: "ذخیره", exact: true }).click();
     await expect(page.getByText("نام شما ذخیره شد.")).toBeVisible();
   }
 }

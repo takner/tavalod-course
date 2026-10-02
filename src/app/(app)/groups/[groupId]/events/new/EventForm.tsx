@@ -6,7 +6,15 @@ import { ActionMessage, initialActionState, SubmitButton } from "@/components/fo
 import { JalaliDateInput } from "@/components/inputs";
 import { EVENT_TYPE_LABELS, todayIso } from "@/lib/format";
 
-export function EventForm({ groupId, members }: { groupId: string; members: { id: string; name: string; isMe: boolean }[] }) {
+export function EventForm({
+  groupId,
+  members,
+  template,
+}: {
+  groupId: string;
+  members: { id: string; name: string; isMe: boolean }[];
+  template: { id: string; title: string; type: string; checklist: string[] } | null;
+}) {
   const [state, action] = useActionState(createEventAction.bind(null, groupId), initialActionState);
   return (
     <form action={action} className="space-y-4">
@@ -14,13 +22,13 @@ export function EventForm({ groupId, members }: { groupId: string; members: { id
         <label htmlFor="ev-title" className="label">
           عنوان
         </label>
-        <input id="ev-title" name="title" className="input" maxLength={120} placeholder="مثلاً سفر شمال" required />
+        <input id="ev-title" name="title" className="input" maxLength={120} placeholder="مثلاً سفر شمال" defaultValue={template?.title} required />
       </div>
       <div>
         <label htmlFor="ev-type" className="label">
           نوع
         </label>
-        <select id="ev-type" name="type" className="input" defaultValue="trip">
+        <select id="ev-type" name="type" className="input" defaultValue={template?.type ?? "trip"}>
           {Object.entries(EVENT_TYPE_LABELS).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
@@ -47,6 +55,17 @@ export function EventForm({ groupId, members }: { groupId: string; members: { id
           ))}
         </ul>
       </fieldset>
+      {template && (
+        <fieldset className="card">
+          <legend className="px-1 text-sm font-bold">چک‌لیست پیشنهادی</legend>
+          {template.checklist.map((t) => (
+            <label key={t} className="flex items-center gap-2 py-1 text-sm">
+              <input type="checkbox" name="task" value={t} defaultChecked />
+              {t}
+            </label>
+          ))}
+        </fieldset>
+      )}
       <ActionMessage state={state} />
       <SubmitButton className="btn-primary w-full">ساخت رویداد</SubmitButton>
     </form>

@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { DbOrTx } from "@/db";
-import { groupMembers } from "@/db/schema";
+import { events, groupMembers, privateSpaceMembers, privateSpaces } from "@/db/schema";
 import { forbidden, notFound } from "./errors";
 
 export interface Actor {
@@ -67,4 +67,40 @@ export async function requireActiveMembers(
  */
 export async function lockGroup(tx: DbOrTx, groupId: string): Promise<void> {
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"group:" + groupId}, 0))`);
+}
+
+export interface SpaceAccess {
+  space: typeof privateSpaces.$inferSelect;
+  member: MemberRow;
+  celebrantMemberId: string | null;
+}
+
+/**
+ * Access to a private (surprise) space. Anyone who is not an active member of the space —
+ * including the celebrant, other group members and outsiders — gets NOT_FOUND, so even the
+ * existence of the space is not revealed.
+ */
+export async function requireSpaceMember(db: DbOrTx, spaceId: string, actor: Actor): Promise<SpaceAccess> {
+  assertId(spaceId, "صفحه");
+  const [row] = await db
+    .select({ space: privateSpaces, member: groupMembers, celebrantMemberId: events.celebrantMemberId })
+    .from(privateSpaces)
+    .innerJoin(events, eq(events.id, privateSpaces.eventId))
+    .innerJoin(privateSpaceMembers, eq(privateSpaceMembers.spaceId, privateSpaces.id))
+    .innerJoin(groupMembers, eq(groupMembers.id, privateSpaceMembers.memberId))
+    .where(and(eq(privateSpaces.id, spaceId), eq(groupMembers.userId, actor.userId), isNull(groupMembers.leftAt)))
+    .limit(1);
+  if (!row || row.member.id === row.celebrantMemberId) throw notFound("صفحه");
+  return row;
+}
+
+/** Ensures every member id belongs to the space (used for money inside a space). */
+export async function requireSpaceMembers(db: DbOrTx, spaceId: string, memberIds: string[]): Promise<void> {
+  const unique = [...new Set(memberIds)];
+  if (!unique.length) return;
+  const rows = await db
+    .select({ memberId: privateSpaceMembers.memberId })
+    .from(privateSpaceMembers)
+    .where(and(eq(privateSpaceMembers.spaceId, spaceId), inArray(privateSpaceMembers.memberId, unique)));
+  if (rows.length !== unique.length) throw forbidden("یکی از افراد انتخاب‌شده عضو این فضای خصوصی نیست.");
 }

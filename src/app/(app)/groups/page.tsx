@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BellIcon, ChevronLeftIcon, ScaleIcon, UsersIcon, WalletIcon } from "@/components/icons";
+import { BellIcon, ChevronLeftIcon, GiftIcon, ScaleIcon, UsersIcon, WalletIcon } from "@/components/icons";
 import { PendingOps } from "@/components/PendingOps";
 import { Shortcut } from "@/components/Shortcut";
 import { Balance, balanceHint, EmptyState } from "@/components/ui";
@@ -64,7 +64,7 @@ export default async function HomePage() {
 
       {/* Shortcuts */}
       <section aria-label="دسترسی سریع" className="card px-2 py-4">
-        <div className="flex justify-around gap-1">
+        <div className="flex justify-around gap-0.5">
           <Shortcut href="#new-group" label="گروه جدید" color="bg-[#f57c00]" icon={<UsersIcon size={26} />} />
           <Shortcut
             href="/me"
@@ -80,6 +80,7 @@ export default async function HomePage() {
             icon={<BellIcon size={26} />}
             badge={unread > 0 ? `${fa(unread)} جدید` : undefined}
           />
+          <Shortcut href="/wishlists" label="ویش‌لیست من" color="bg-[#d81b60]" icon={<GiftIcon size={26} />} />
           <Shortcut href="/me" label="حساب من" color="bg-[#8d6e63]" icon={<WalletIcon size={26} />} />
         </div>
       </section>

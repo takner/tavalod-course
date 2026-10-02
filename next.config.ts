@@ -12,6 +12,10 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
+  experimental: {
+    // Photos are re-encoded in the browser (≈200–500 KB) before upload; the server caps files at 1.5 MB.
+    serverActions: { bodySizeLimit: "2mb" },
+  },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

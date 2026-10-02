@@ -3,11 +3,12 @@ import Link from "next/link";
 import { decideSettlementAction } from "@/app/actions";
 import { ActionButton } from "@/components/forms";
 import { PendingOps } from "@/components/PendingOps";
-import { CalendarIcon, PlusIcon, ReceiptIcon, ScaleIcon, UsersIcon } from "@/components/icons";
+import { CakeIcon, CalendarIcon, GiftIcon, PlusIcon, PollIcon, ReceiptIcon, ScaleIcon, SparkIcon, UsersIcon } from "@/components/icons";
+import { upcomingBirthdays } from "@/server/birthdays";
 import { Shortcut } from "@/components/Shortcut";
 import { Balance, balanceHint, Chip, EmptyState, Money, PageHeader } from "@/components/ui";
 import { formatToman } from "@/domain/money";
-import { EVENT_STATUS_LABELS, EVENT_TYPE_LABELS, formatJalaliDate, formatJalaliDateTime, METHOD_LABELS } from "@/lib/format";
+import { EVENT_STATUS_LABELS, EVENT_TYPE_LABELS, formatJalaliDate, formatJalaliDateTime, METHOD_LABELS, todayIso } from "@/lib/format";
 import { orNotFound } from "@/lib/page";
 import { requireUser } from "@/lib/session";
 import { getActivity, getGroupView } from "@/server/queries";
@@ -30,6 +31,7 @@ export default async function GroupPage(props: PageProps<"/groups/[groupId]">) {
   const user = await requireUser(`/groups/${groupId}`);
   const actor = { userId: user.id };
   const view = await orNotFound(getGroupView(actor, groupId));
+  const upcoming = await upcomingBirthdays(actor, groupId, todayIso(), 45);
   const base = `/groups/${groupId}`;
   const name = (id: string) => view.members.find((m) => m.id === id)?.name ?? "—";
   const myBalance = view.balances.get(view.me.id) ?? 0n;
@@ -51,7 +53,7 @@ export default async function GroupPage(props: PageProps<"/groups/[groupId]">) {
       </Link>
 
       <section aria-label="دسترسی سریع" className="card mb-4 px-2 py-4">
-        <div className="flex justify-around gap-1">
+        <div className="grid grid-cols-4 justify-items-center gap-y-4">
           <Shortcut href={`${base}/expenses/new`} label="هزینه جدید" color="bg-[#ef4056]" icon={<ReceiptIcon size={26} />} />
           <Shortcut
             href={`${base}/settle`}
@@ -60,7 +62,11 @@ export default async function GroupPage(props: PageProps<"/groups/[groupId]">) {
             icon={<ScaleIcon size={26} />}
             badge={needsMe.length > 0 ? `${fa(needsMe.length)} تأیید` : undefined}
           />
+          <Shortcut href={`${base}/birthdays/new`} label="تولد" color="bg-[#d81b60]" icon={<CakeIcon size={26} />} />
           <Shortcut href={`${base}/events/new`} label="رویداد" color="bg-[#f57c00]" icon={<CalendarIcon size={26} />} />
+          <Shortcut href={`${base}/polls/new`} label="نظرسنجی" color="bg-[#5c6bc0]" icon={<PollIcon size={26} />} />
+          <Shortcut href={`${base}/wishlists`} label="ویش‌لیست‌ها" color="bg-[#8d6e63]" icon={<GiftIcon size={26} />} />
+          <Shortcut href={`${base}/ideas`} label="ایده برنامه" color="bg-[#43a047]" icon={<SparkIcon size={26} />} />
           <Shortcut
             href={`${base}/members`}
             label={`اعضا (${fa(view.members.filter((m) => m.active).length)})`}
@@ -69,6 +75,30 @@ export default async function GroupPage(props: PageProps<"/groups/[groupId]">) {
           />
         </div>
       </section>
+
+      {upcoming.length > 0 && (
+        <section className="card mb-4">
+          <h2 className="mb-2 text-sm font-bold">تولدهای پیش رو 🎂</h2>
+          <ul className="space-y-1.5 text-sm">
+            {upcoming.map((b) => (
+              <li key={b.memberId} className="flex items-center justify-between gap-2">
+                <span>
+                  {b.name}
+                  <span className="text-xs text-muted">
+                    {" "}
+                    · {formatJalaliDate(b.next.iso, false)} ({b.next.daysUntil === 0 ? "امروز" : `${fa(b.next.daysUntil)} روز دیگر`})
+                  </span>
+                </span>
+                {b.memberId !== view.me.id && (
+                  <Link href={`${base}/birthdays/new?member=${b.memberId}`} className="btn-ghost min-h-8 px-2 text-xs">
+                    برنامه‌ریزی
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="mb-4 space-y-3">
         <PendingOps groupId={groupId} />

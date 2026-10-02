@@ -5,6 +5,9 @@
 # The database is NOT restored: migrations are additive/forward-only, so older code keeps working
 # with the newer schema. Restoring a backup would discard newer user data and must be a separate,
 # deliberate decision (see docs/operations.md).
+#
+# Compatibility guards: some older releases would mis-handle data written by newer ones. The guard
+# below checks the real data, not just the schema, and refuses instead of rolling back unsafely.
 set -euo pipefail
 BASE=/home/deploy/apps/tavalod
 CUR=$(basename "$(readlink "$BASE/current")")
@@ -14,6 +17,20 @@ if [ -z "$TARGET" ]; then
 fi
 [ -n "$TARGET" ] && [ -d "$BASE/releases/$TARGET" ] || { echo "release '$TARGET' not found" >&2; exit 1; }
 docker image inspect "tavalod:$TARGET" >/dev/null
+
+DB="docker compose -p tavalod -f $BASE/current/deploy/compose.yml --env-file $BASE/current/deploy/release.env exec -T db psql -U tavalod -d tavalod -Atc"
+# Phase 2 (migration 0004) introduced private surprise spaces. Releases before it load every
+# expense/settlement of a group into the PUBLIC ledger, which would expose surprise money.
+if [ ! -f "$BASE/releases/$TARGET/drizzle/0004_phase2_privacy_triggers.sql" ]; then
+  PRIVATE=$($DB "select (select count(*) from expenses where space_id is not null) + (select count(*) from settlements where space_id is not null)" 2>/dev/null || echo "?")
+  if [ "$PRIVATE" != "0" ]; then
+    echo "refusing rollback to $TARGET: it predates private spaces and $PRIVATE private money row(s) exist;" >&2
+    echo "that release would show surprise expenses in public group balances. Roll forward with a fix instead." >&2
+    exit 2
+  fi
+  echo "guard: $TARGET predates private spaces; no private money rows exist, rollback is safe."
+fi
+
 cd "$BASE/releases/$TARGET/deploy"
 echo "TAVALOD_RELEASE=$TARGET" > release.env
 C="docker compose -p tavalod -f compose.yml --env-file release.env"

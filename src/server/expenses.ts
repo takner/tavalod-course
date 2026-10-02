@@ -3,7 +3,17 @@ import { getDb, type Tx } from "@/db";
 import { events, expensePayers, expenseShares, expenses } from "@/db/schema";
 import { assertRefundAmount, defaultRefundSplit, refundableRemaining } from "@/domain/refund";
 import { computeShares, validatePayers, type MemberAmount } from "@/domain/split";
-import { assertId, isAdmin, lockGroup, requireActiveMembers, requireMember, type Actor } from "./access";
+import {
+  assertId,
+  isAdmin,
+  lockGroup,
+  requireActiveMembers,
+  requireMember,
+  requireSpaceMember,
+  requireSpaceMembers,
+  type Actor,
+  type MemberRow,
+} from "./access";
 import { notifyMembers, writeAudit } from "./audit";
 import { AppError, forbidden, invalid, notFound } from "./errors";
 import { claimIdempotencyKey } from "./idempotency";
@@ -44,6 +54,13 @@ function affectedMembers(...records: (ExpenseRecord | null)[]): Set<string> {
   return out;
 }
 
+/** Group membership, plus space membership when the expense is private. */
+async function requireExpenseAccess(tx: Tx, actor: Actor, e: { groupId: string; spaceId: string | null }): Promise<MemberRow> {
+  const member = await requireMember(tx, e.groupId, actor);
+  if (e.spaceId) await requireSpaceMember(tx, e.spaceId, actor);
+  return member;
+}
+
 /** An event that is closed or cancelled no longer accepts new or changed expenses. */
 async function assertEventWritable(tx: Tx, groupId: string, eventId: string | null): Promise<void> {
   if (!eventId) return;
@@ -76,6 +93,55 @@ async function insertLines(tx: Tx, expenseId: string, lines: ReturnType<typeof c
   await tx.insert(expenseShares).values(lines.shares.map((s) => ({ expenseId, ...s })));
 }
 
+/**
+ * Inserts an expense inside an existing transaction (caller has checked access and locked the
+ * group). Shared by the public expense form and the gift purchase flow.
+ */
+export async function insertExpenseInTx(
+  tx: Tx,
+  actor: Actor,
+  input: ExpenseInput,
+  opts: { giftId?: string | null } = {},
+): Promise<ExpenseRecord> {
+  const spaceId = input.spaceId ?? null;
+  if (spaceId && input.eventId) throw invalid("هزینه خصوصی به رویداد عمومی متصل نمی‌شود.");
+  await assertEventWritable(tx, input.groupId, input.eventId);
+  const lines = computeLines(input);
+  const memberIds = [...lines.payers, ...lines.shares].map((x) => x.memberId);
+  await requireActiveMembers(tx, input.groupId, memberIds);
+  if (spaceId) await requireSpaceMembers(tx, spaceId, memberIds);
+
+  const [row] = await tx
+    .insert(expenses)
+    .values({
+      groupId: input.groupId,
+      eventId: input.eventId,
+      spaceId,
+      giftId: opts.giftId ?? null,
+      title: input.title,
+      category: input.category,
+      totalAmount: input.totalAmount,
+      date: input.date,
+      splitType: input.splitType,
+      note: input.note || null,
+      createdBy: actor.userId,
+    })
+    .returning();
+  await insertLines(tx, row.id, lines);
+  const after = (await loadExpense(tx, row.id))!;
+  await writeAudit(tx, { groupId: input.groupId, entityType: "expense", entityId: row.id, action: "create", actor, after, spaceId });
+  await notifyMembers(
+    tx,
+    input.groupId,
+    affectedMembers(after),
+    actor,
+    "expense_created",
+    { expenseId: row.id, title: row.title, amount: row.totalAmount },
+    { spaceId },
+  );
+  return after;
+}
+
 export async function createExpense(
   actor: Actor,
   raw: unknown,
@@ -84,47 +150,28 @@ export async function createExpense(
   const input = expenseInput.parse(raw);
   return getDb().transaction(async (tx) => {
     await requireMember(tx, input.groupId, actor);
+    if (input.spaceId) {
+      const access = await requireSpaceMember(tx, input.spaceId, actor);
+      if (access.space.groupId !== input.groupId) throw notFound("صفحه");
+    }
     await lockGroup(tx, input.groupId);
     const idem = await claimIdempotencyKey(tx, actor, input.groupId, "expense.create", idempotencyKey, raw);
     if (idem.replayed) return { expenseId: idem.resultId, replayed: true };
-
-    await assertEventWritable(tx, input.groupId, input.eventId);
-    const lines = computeLines(input);
-    await requireActiveMembers(tx, input.groupId, [...lines.payers, ...lines.shares].map((x) => x.memberId));
-
-    const [row] = await tx
-      .insert(expenses)
-      .values({
-        groupId: input.groupId,
-        eventId: input.eventId,
-        title: input.title,
-        category: input.category,
-        totalAmount: input.totalAmount,
-        date: input.date,
-        splitType: input.splitType,
-        note: input.note || null,
-        createdBy: actor.userId,
-      })
-      .returning();
-    await insertLines(tx, row.id, lines);
-    const after = await loadExpense(tx, row.id);
-    await writeAudit(tx, { groupId: input.groupId, entityType: "expense", entityId: row.id, action: "create", actor, after });
-    await notifyMembers(tx, input.groupId, affectedMembers(after), actor, "expense_created", {
-      expenseId: row.id,
-      title: row.title,
-      amount: row.totalAmount,
-    });
-    await idem.complete(row.id);
-    return { expenseId: row.id, replayed: false };
+    const rec = await insertExpenseInTx(tx, actor, input);
+    await idem.complete(rec.expense.id);
+    return { expenseId: rec.expense.id, replayed: false };
   });
 }
 
 async function requireEditable(tx: Tx, actor: Actor, expenseId: string, expectedVersion: number) {
   const before = await loadExpense(tx, expenseId, true);
   if (!before || before.expense.deletedAt) throw notFound("هزینه");
-  const member = await requireMember(tx, before.expense.groupId, actor);
+  const member = await requireExpenseAccess(tx, actor, before.expense);
   if (before.expense.createdBy !== actor.userId && !isAdmin(member)) {
     throw forbidden("فقط ثبت‌کننده هزینه یا مدیر گروه می‌تواند آن را تغییر دهد.");
+  }
+  if (before.expense.giftId && before.expense.kind === "expense") {
+    throw invalid("خرید هدیه را از صفحه همان هدیه مدیریت کنید؛ برای بازگشت پول از «برگشت خرید» استفاده کنید.");
   }
   if (before.expense.version !== expectedVersion) {
     throw new AppError("VERSION_CONFLICT", "این هزینه در این فاصله توسط شخص دیگری تغییر کرده است. صفحه را تازه کنید.");
@@ -139,6 +186,16 @@ async function activeRefunds(tx: Tx, expenseId: string) {
     .where(and(eq(expenses.refundOfExpenseId, expenseId), isNull(expenses.deletedAt)));
 }
 
+async function peekExpense(tx: Tx, expenseId: string) {
+  const [peek] = await tx
+    .select({ groupId: expenses.groupId, spaceId: expenses.spaceId })
+    .from(expenses)
+    .where(eq(expenses.id, expenseId))
+    .limit(1);
+  if (!peek) throw notFound("هزینه");
+  return peek;
+}
+
 export async function updateExpense(
   actor: Actor,
   expenseId: string,
@@ -148,14 +205,15 @@ export async function updateExpense(
   assertId(expenseId, "هزینه");
   const input = expenseInput.parse(raw);
   return getDb().transaction(async (tx) => {
-    const [peek] = await tx.select({ groupId: expenses.groupId }).from(expenses).where(eq(expenses.id, expenseId)).limit(1);
-    if (!peek) throw notFound("هزینه");
-    await requireMember(tx, peek.groupId, actor);
+    const peek = await peekExpense(tx, expenseId);
+    await requireExpenseAccess(tx, actor, peek);
     await lockGroup(tx, peek.groupId);
     const before = await requireEditable(tx, actor, expenseId, expectedVersion);
     const e = before.expense;
     if (input.groupId !== e.groupId) throw invalid("گروه هزینه قابل تغییر نیست.");
+    if ((input.spaceId ?? null) !== e.spaceId) throw invalid("محدوده (عمومی یا خصوصی) هزینه قابل تغییر نیست.");
     if (e.kind === "refund") throw invalid("برگشت خرید قابل ویرایش نیست؛ آن را حذف و دوباره ثبت کنید.");
+    if (e.spaceId && input.eventId) throw invalid("هزینه خصوصی به رویداد عمومی متصل نمی‌شود.");
 
     await assertEventWritable(tx, e.groupId, e.eventId);
     if (input.eventId !== e.eventId) await assertEventWritable(tx, e.groupId, input.eventId);
@@ -170,7 +228,9 @@ export async function updateExpense(
     }
 
     const lines = computeLines(input);
-    await requireActiveMembers(tx, e.groupId, [...lines.payers, ...lines.shares].map((x) => x.memberId));
+    const memberIds = [...lines.payers, ...lines.shares].map((x) => x.memberId);
+    await requireActiveMembers(tx, e.groupId, memberIds);
+    if (e.spaceId) await requireSpaceMembers(tx, e.spaceId, memberIds);
 
     await tx.delete(expensePayers).where(eq(expensePayers.expenseId, expenseId));
     await tx.delete(expenseShares).where(eq(expenseShares.expenseId, expenseId));
@@ -193,13 +253,25 @@ export async function updateExpense(
     await insertLines(tx, expenseId, lines);
 
     const after = await loadExpense(tx, expenseId);
-    await writeAudit(tx, { groupId: e.groupId, entityType: "expense", entityId: expenseId, action: "update", actor, before, after });
-    await notifyMembers(tx, e.groupId, affectedMembers(before, after), actor, "expense_updated", {
-      expenseId,
-      title: input.title,
-      amount: input.totalAmount,
-      previousAmount: e.totalAmount,
+    await writeAudit(tx, {
+      groupId: e.groupId,
+      entityType: "expense",
+      entityId: expenseId,
+      action: "update",
+      actor,
+      before,
+      after,
+      spaceId: e.spaceId,
     });
+    await notifyMembers(
+      tx,
+      e.groupId,
+      affectedMembers(before, after),
+      actor,
+      "expense_updated",
+      { expenseId, title: input.title, amount: input.totalAmount, previousAmount: e.totalAmount },
+      { spaceId: e.spaceId },
+    );
     return { version: updated.version };
   });
 }
@@ -208,9 +280,8 @@ export async function updateExpense(
 export async function deleteExpense(actor: Actor, expenseId: string, expectedVersion: number): Promise<void> {
   assertId(expenseId, "هزینه");
   await getDb().transaction(async (tx) => {
-    const [peek] = await tx.select({ groupId: expenses.groupId }).from(expenses).where(eq(expenses.id, expenseId)).limit(1);
-    if (!peek) throw notFound("هزینه");
-    await requireMember(tx, peek.groupId, actor);
+    const peek = await peekExpense(tx, expenseId);
+    await requireExpenseAccess(tx, actor, peek);
     await lockGroup(tx, peek.groupId);
     const before = await requireEditable(tx, actor, expenseId, expectedVersion);
     await assertEventWritable(tx, before.expense.groupId, before.expense.eventId);
@@ -228,18 +299,24 @@ export async function deleteExpense(actor: Actor, expenseId: string, expectedVer
       action: "delete",
       actor,
       before,
+      spaceId: before.expense.spaceId,
     });
-    await notifyMembers(tx, before.expense.groupId, affectedMembers(before), actor, "expense_deleted", {
-      expenseId,
-      title: before.expense.title,
-      amount: before.expense.totalAmount,
-    });
+    await notifyMembers(
+      tx,
+      before.expense.groupId,
+      affectedMembers(before),
+      actor,
+      "expense_deleted",
+      { expenseId, title: before.expense.title, amount: before.expense.totalAmount },
+      { spaceId: before.expense.spaceId },
+    );
   });
 }
 
 /**
  * Records a (partial or full) refund against an expense. The refund is linked to the original,
- * capped by what remains refundable (checked under a row lock), and idempotent.
+ * capped by what remains refundable (checked under a row lock), and idempotent. A refund stays in
+ * the same scope (public / private space) and gift as its original.
  */
 export async function createRefund(
   actor: Actor,
@@ -248,13 +325,8 @@ export async function createRefund(
 ): Promise<{ expenseId: string; replayed: boolean }> {
   const input = refundInput.parse(raw);
   return getDb().transaction(async (tx) => {
-    const [peek] = await tx
-      .select({ groupId: expenses.groupId })
-      .from(expenses)
-      .where(eq(expenses.id, input.expenseId))
-      .limit(1);
-    if (!peek) throw notFound("هزینه");
-    await requireMember(tx, peek.groupId, actor);
+    const peek = await peekExpense(tx, input.expenseId);
+    await requireExpenseAccess(tx, actor, peek);
     await lockGroup(tx, peek.groupId);
     const idem = await claimIdempotencyKey(tx, actor, peek.groupId, "refund.create", idempotencyKey, raw);
     if (idem.replayed) return { expenseId: idem.resultId, replayed: true };
@@ -276,13 +348,17 @@ export async function createRefund(
 
     const split = defaultRefundSplit(input.amount, original);
     const receivers = input.receivers ? validatePayers(input.amount, input.receivers) : split.receivers;
-    await requireActiveMembers(tx, o.groupId, [...receivers, ...split.shares].map((x) => x.memberId));
+    const memberIds = [...receivers, ...split.shares].map((x) => x.memberId);
+    await requireActiveMembers(tx, o.groupId, memberIds);
+    if (o.spaceId) await requireSpaceMembers(tx, o.spaceId, memberIds);
 
     const [row] = await tx
       .insert(expenses)
       .values({
         groupId: o.groupId,
         eventId: o.eventId,
+        spaceId: o.spaceId,
+        giftId: o.giftId,
         title: `برگشت: ${o.title}`,
         category: o.category,
         totalAmount: input.amount,
@@ -300,13 +376,24 @@ export async function createRefund(
       .values(split.shares.map((s) => ({ expenseId: row.id, memberId: s.memberId, amount: s.amount, inputValue: s.amount })));
 
     const after = await loadExpense(tx, row.id);
-    await writeAudit(tx, { groupId: o.groupId, entityType: "expense", entityId: row.id, action: "refund", actor, after });
-    await notifyMembers(tx, o.groupId, affectedMembers(after), actor, "refund_created", {
-      expenseId: row.id,
-      originalExpenseId: o.id,
-      title: o.title,
-      amount: input.amount,
+    await writeAudit(tx, {
+      groupId: o.groupId,
+      entityType: "expense",
+      entityId: row.id,
+      action: "refund",
+      actor,
+      after,
+      spaceId: o.spaceId,
     });
+    await notifyMembers(
+      tx,
+      o.groupId,
+      affectedMembers(after),
+      actor,
+      "refund_created",
+      { expenseId: row.id, originalExpenseId: o.id, title: o.title, amount: input.amount },
+      { spaceId: o.spaceId },
+    );
     await idem.complete(row.id);
     return { expenseId: row.id, replayed: false };
   });
@@ -317,7 +404,7 @@ export async function getExpenseRecord(actor: Actor, expenseId: string): Promise
   return getDb().transaction(async (tx) => {
     const rec = await loadExpense(tx, expenseId);
     if (!rec) throw notFound("هزینه");
-    await requireMember(tx, rec.expense.groupId, actor);
+    await requireExpenseAccess(tx, actor, rec.expense);
     return rec;
   });
 }

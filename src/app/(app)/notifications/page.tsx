@@ -9,7 +9,19 @@ import { listNotifications } from "@/server/queries";
 
 export const metadata: Metadata = { title: "اعلان‌ها" };
 
-type Payload = { title?: string; amount?: string; previousAmount?: string; expenseId?: string; name?: string; claimed?: boolean };
+type Payload = {
+  title?: string;
+  amount?: string;
+  previousAmount?: string;
+  expenseId?: string;
+  name?: string;
+  claimed?: boolean;
+  question?: string;
+  label?: string;
+  pollId?: string;
+  eventId?: string;
+  giftId?: string;
+};
 
 const amount = (v?: string) => (v && /^\d+$/.test(v) ? formatToman(BigInt(v)) : "");
 
@@ -33,9 +45,41 @@ function describe(type: string, p: Payload): string {
       return `تسویه ${amount(p.amount)} شما توسط دریافت‌کننده رد شد.`;
     case "member_joined":
       return p.claimed ? `${p.name} حساب خود را به عضو مهمان وصل کرد.` : `${p.name} به گروه پیوست.`;
+    case "event_invited":
+      return `به «${p.title}» دعوت شده‌اید. حضورتان را اعلام کنید.`;
+    case "poll_created":
+      return `نظرسنجی جدید: «${p.question}»`;
+    case "poll_decided":
+      return `نتیجه «${p.question}» اعلام شد: ${p.label}`;
+    case "space_added":
+      return `به فضای خصوصی «${p.title}» اضافه شدید.`;
+    case "gift_created":
+      return `برای مشارکت در هدیه «${p.title}» دعوت شده‌اید.`;
+    case "gift_status":
+      return `وضعیت هدیه «${p.title}» تغییر کرد.`;
+    case "task_assigned":
+      return `کار «${p.title}» به شما سپرده شد.`;
+    case "reminder_poll":
+      return `یادآوری: مهلت نظرسنجی «${p.question}» نزدیک است و هنوز رأی نداده‌اید.`;
+    case "reminder_rsvp":
+      return `یادآوری: مهلت پاسخ حضور در «${p.title}» نزدیک است.`;
+    case "reminder_pledge":
+      return `یادآوری: مهلت اعلام مشارکت در هدیه «${p.title}» نزدیک است.`;
     default:
       return "اعلان جدید";
   }
+}
+
+function hrefFor(n: { groupId: string | null; type: string; spaceId: string | null }, p: Payload): string {
+  if (!n.groupId) return "/groups";
+  const g = `/groups/${n.groupId}`;
+  if (p.expenseId && n.type.startsWith("expense")) return `${g}/expenses/${p.expenseId}`;
+  if (p.giftId && n.spaceId) return `${g}/spaces/${n.spaceId}/gifts/${p.giftId}`;
+  if (n.spaceId) return `${g}/spaces/${n.spaceId}`;
+  if (p.pollId) return `${g}/polls/${p.pollId}`;
+  if (p.eventId) return `${g}/events/${p.eventId}`;
+  if (n.type.startsWith("settlement")) return `${g}/settle`;
+  return g;
 }
 
 export default async function NotificationsPage() {
@@ -60,12 +104,7 @@ export default async function NotificationsPage() {
         <ul className="space-y-2">
           {rows.map(({ n, groupName }) => {
             const p = n.payload as Payload;
-            const href =
-              n.groupId && p.expenseId && n.type.startsWith("expense")
-                ? `/groups/${n.groupId}/expenses/${p.expenseId}`
-                : n.groupId
-                  ? `/groups/${n.groupId}${n.type.startsWith("settlement") ? "/settle" : ""}`
-                  : "/groups";
+            const href = hrefFor(n, p);
             return (
               <li key={n.id}>
                 <Link href={href} className={`card block py-3 text-sm ${n.readAt ? "" : "border-primary/50 bg-primary-soft/40"}`}>

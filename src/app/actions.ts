@@ -6,6 +6,7 @@ import { amountFromJson } from "@/domain/money";
 import { clearSessionCookie, readSessionToken, requireActor, setSessionCookie } from "@/lib/session";
 import { appUrl, consumeLoginToken, deleteSession, requestLoginLink, safeNextPath, updateProfileName } from "@/server/auth";
 import { toAppError } from "@/server/errors";
+import { createTask } from "@/server/event-planning";
 import { changeEventStatus, createEvent, setParticipants } from "@/server/events";
 import { createRefund, deleteExpense, updateExpense } from "@/server/expenses";
 import {
@@ -170,6 +171,11 @@ export async function createEventAction(groupId: string, _prev: ActionState, fd:
     }),
   );
   if (!r.ok) return r.state;
+  // Starter checklist chosen from an activity template (each item is plain, editable text).
+  const tasks = fd.getAll("task").filter((v): v is string => typeof v === "string" && v.trim() !== "").slice(0, 20);
+  for (const title of tasks) {
+    await attempt(() => createTask(actor, r.value.eventId, { title, assigneeMemberId: null, dueDate: null, spaceId: null }));
+  }
   redirect(`${groupPath(groupId)}/events/${r.value.eventId}`);
 }
 

@@ -18,7 +18,16 @@ Product rule: **every number shown must be explainable and the books must always
 ## Data
 - Money references point at `group_members.id` (members may be guests with `user_id` null). A guest is bound to a user only via a single-use `claim` invite.
 - Migrations are forward-only and additive (expand/contract); generate with `npm run db:generate`, never edit an applied migration.
-- Offline: only *creating* expenses/settlements is queued (IndexedDB per user, `tavalod-<userId>`), replayed through `/api/sync` with idempotency keys.
+- Offline: only *creating* expenses/settlements is queued (IndexedDB per user, `tavalod-<userId>`), replayed through `/api/sync` with idempotency keys. Reservations, confirming money and voting are online-only (`<OnlineOnly>`).
+
+## Phase 2: surprises, gifts, polls (privacy rules)
+- Private spaces (`private_spaces`) hold surprise data. Every read/write goes through `requireSpaceMember` (NOT_FOUND for everyone else, incl. the celebrant). The celebrant can never be a member (service + DB trigger).
+- Private money has `space_id` set and is loaded only with `loadGroupLedger(db, groupId, { kind: "space", spaceId })`. The default (public) ledger, group activity (`audit_log.space_id is null`), notifications (`notifyMembers(..., { spaceId })`) and event pages must never include space rows. Private money never has `event_id` / event allocations.
+- Pledge ≠ money ≠ purchase: `gift_pledges` never touch the ledger; money handed over is a settlement with `purpose` collection/refund (counts only once confirmed); the purchase is one private expense with `gift_id`. A share above a pledge cap is refused (`OverCapError`).
+- Wishlist owners never see reservations (owner view, group view as owner, share link). Reservation exclusivity = item row lock + partial unique index.
+- Guests, RSVP, contributors and expense sharers are separate sets; none of RSVP / invites / votes / pledges creates debt.
+- Times: instants are `timestamptz` + event zone (`Asia/Tehran`), shown via `formatEventInstant`; birthdays stored in their own calendar (`users.birth_*`).
+- Rollback to a release before migration 0004 is refused by `deploy/rollback.sh` once private money exists.
 
 ## Commands
 - `npm run db:up` (dev Postgres on 127.0.0.1:5433) · `npm run db:migrate` · `npm run dev`

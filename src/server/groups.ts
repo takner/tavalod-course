@@ -1,6 +1,6 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { groupMembers, groups, invites, settlements, users } from "@/db/schema";
+import { groupMembers, groups, invites, privateSpaceMembers, settlements, users } from "@/db/schema";
 import { computeBalances } from "@/domain/ledger";
 import { assertId, lockGroup, requireAdmin, requireMember, type Actor } from "./access";
 import { notifyMembers, writeAudit } from "./audit";
@@ -74,6 +74,18 @@ export async function removeMember(actor: Actor, groupId: string, memberId: stri
     const ledger = await loadGroupLedger(tx, groupId);
     const balance = computeBalances(ledger.expenses, ledger.settlements).get(m.id) ?? 0n;
     if (balance !== 0n) throw invalid("مانده حساب این عضو صفر نیست؛ ابتدا تسویه کنید.");
+    // Private spaces have their own ledgers; the member must be settled there too. The message stays
+    // generic so it reveals nothing about a surprise to whoever is removing the member.
+    const memberSpaces = await tx
+      .select({ spaceId: privateSpaceMembers.spaceId })
+      .from(privateSpaceMembers)
+      .where(eq(privateSpaceMembers.memberId, m.id));
+    for (const { spaceId } of memberSpaces) {
+      const sl = await loadGroupLedger(tx, groupId, { kind: "space", spaceId });
+      if ((computeBalances(sl.expenses, sl.settlements).get(m.id) ?? 0n) !== 0n) {
+        throw invalid("مانده حساب این عضو صفر نیست؛ ابتدا تسویه کنید.");
+      }
+    }
     const [pending] = await tx
       .select({ id: settlements.id })
       .from(settlements)

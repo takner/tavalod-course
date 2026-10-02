@@ -5,6 +5,10 @@ import { PendingOps } from "@/components/PendingOps";
 import { Balance, Money, Notice, PageHeader } from "@/components/ui";
 import { requireUser } from "@/lib/session";
 import { getMyAccount } from "@/server/queries";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/db";
+import { users } from "@/db/schema";
+import { BirthdayForm } from "./BirthdayForm";
 import { NameForm } from "./NameForm";
 
 export const metadata: Metadata = { title: "حساب من" };
@@ -14,15 +18,29 @@ export default async function MePage(props: PageProps<"/me">) {
   const user = await requireUser("/me");
   const account = await getMyAccount({ userId: user.id });
   const name = (id: string) => account.memberNames.get(id) ?? "—";
+  const [profile] = await getDb()
+    .select({ cal: users.birthCalendar, month: users.birthMonth, day: users.birthDay, year: users.birthYear })
+    .from(users)
+    .where(eq(users.id, user.id));
+  const birthday = profile?.cal ? { calendar: profile.cal, month: profile.month!, day: profile.day!, year: profile.year } : null;
 
   return (
     <>
-      <PageHeader title="حساب من" subtitle={user.email} />
+      {/* Placeholder addresses of link-only accounts are not shown. */}
+      <PageHeader title="حساب من" subtitle={user.email.endsWith(".invalid") ? undefined : user.email} />
       <div className="space-y-4">
         {welcome && <Notice tone="success">خوش آمدید! ابتدا نامی را که دوستانتان با آن شما را می‌شناسند وارد کنید.</Notice>}
-        <section className="card">
+        <section className="card space-y-4">
           <NameForm name={user.name} />
+          <BirthdayForm current={birthday} />
         </section>
+        <Link href="/wishlists" className="card flex items-center justify-between">
+          <span>
+            <span className="block font-bold">🎁 ویش‌لیست‌های من</span>
+            <span className="text-xs text-muted">چیزهایی که دوست دارید هدیه بگیرید</span>
+          </span>
+          <span aria-hidden>‹</span>
+        </Link>
 
         <section className="card space-y-3">
           <h2 className="font-bold">دفتر حساب</h2>

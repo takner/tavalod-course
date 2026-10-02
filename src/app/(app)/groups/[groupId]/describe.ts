@@ -39,6 +39,26 @@ export function describeAudit(log: Log, memberName: (id: string) => string): str
       return `رویداد «${before?.title ?? ""}» را لغو کرد.`;
     case "event:participants":
       return "شرکت‌کنندگان یک رویداد را تغییر داد.";
+    case "event:details":
+      return `جزئیات رویداد «${(after as { title?: string } | null)?.title ?? ""}» را به‌روز کرد.`;
+    case "event:rsvp":
+      return "پاسخ حضور ثبت کرد.";
+    case "event:cake":
+      return "تنظیمات کیک را تغییر داد.";
+    case "task:create":
+      return `کار «${(after as { title?: string } | null)?.title ?? ""}» را به چک‌لیست اضافه کرد.`;
+    case "task:done":
+      return `کار «${(before as { title?: string } | null)?.title ?? ""}» را انجام‌شده علامت زد.`;
+    case "task:undone":
+      return `کار «${(before as { title?: string } | null)?.title ?? ""}» را به انجام‌نشده برگرداند.`;
+    case "task:delete":
+      return `کار «${(before as { title?: string } | null)?.title ?? ""}» را حذف کرد.`;
+    case "poll:create":
+      return `نظرسنجی «${(after as { question?: string } | null)?.question ?? ""}» را ساخت.`;
+    case "poll:close":
+      return "یک نظرسنجی را بست.";
+    case "poll:decide":
+      return `تصمیم نهایی نظرسنجی را اعلام کرد: ${(after as { label?: string } | null)?.label ?? ""}`;
     case "member:add_guest":
       return `«${after?.displayName ?? ""}» را به‌عنوان عضو مهمان اضافه کرد.`;
     case "member:join":

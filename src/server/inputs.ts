@@ -34,6 +34,8 @@ export const EXPENSE_CATEGORIES = [
   "gift",
   "shopping",
   "other",
+  "cake",
+  "venue",
 ] as const;
 
 export const expenseInput = z
@@ -48,6 +50,8 @@ export const expenseInput = z
     payers: z.array(z.object({ memberId: id, amount: amountString })).min(1, "پرداخت‌کننده را مشخص کنید.").max(50),
     shares: z.array(z.object({ memberId: id, value: intString })).min(1, "افراد سهیم را مشخص کنید.").max(50),
     note: z.string().trim().max(500).optional(),
+    /** Private (surprise) space; omitted/null = public group ledger. */
+    spaceId: id.nullable().optional(),
   })
   .strict();
 export type ExpenseInput = z.infer<typeof expenseInput>;
@@ -77,6 +81,9 @@ export const settlementInput = z
     note: z.string().trim().max(500).optional(),
     /** Optional explicit allocation; default is the deterministic auto-allocation. */
     allocations: z.array(allocationInput).min(1).max(100).optional(),
+    spaceId: id.nullable().optional(),
+    giftId: id.nullable().optional(),
+    purpose: z.enum(["settle", "collection", "refund"]).optional(),
   })
   .strict()
   .refine((s) => s.fromMemberId !== s.toMemberId, "پرداخت‌کننده و دریافت‌کننده نباید یکی باشند.");

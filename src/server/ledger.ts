@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import type { DbOrTx } from "@/db";
 import {
   events,
@@ -10,22 +10,47 @@ import {
 } from "@/db/schema";
 import type { LedgerExpense, LedgerSettlement } from "@/domain/ledger";
 
+export type ScopedLedgerExpense = LedgerExpense & { giftId: string | null; spaceId: string | null };
+export type ScopedLedgerSettlement = LedgerSettlement & {
+  giftId: string | null;
+  spaceId: string | null;
+  purpose: "settle" | "collection" | "refund";
+};
+
 export interface GroupLedger {
-  expenses: LedgerExpense[];
-  settlements: LedgerSettlement[];
+  expenses: ScopedLedgerExpense[];
+  settlements: ScopedLedgerSettlement[];
   /** Event ids ordered oldest first (start date, then creation) — the auto-allocation order. */
   orderedEventIds: string[];
 }
 
-/** Loads everything that affects a group's balances. Balances are always derived, never stored. */
-export async function loadGroupLedger(db: DbOrTx, groupId: string): Promise<GroupLedger> {
+/**
+ * Which ledger to load. The public group ledger NEVER includes private-space money, so balances,
+ * suggestions, event scopes and "my balance" in a group reveal nothing about a surprise.
+ */
+export type LedgerScope = { kind: "group" } | { kind: "space"; spaceId: string };
+
+/** Loads everything that affects a ledger's balances. Balances are always derived, never stored. */
+export async function loadGroupLedger(db: DbOrTx, groupId: string, scope: LedgerScope = { kind: "group" }): Promise<GroupLedger> {
+  const expScope = scope.kind === "group" ? isNull(expenses.spaceId) : eq(expenses.spaceId, scope.spaceId);
+  const setScope = scope.kind === "group" ? isNull(settlements.spaceId) : eq(settlements.spaceId, scope.spaceId);
   const [expRows, setRows, evRows] = await Promise.all([
-    db.select().from(expenses).where(eq(expenses.groupId, groupId)).orderBy(asc(expenses.date), asc(expenses.createdAt)),
-    db.select().from(settlements).where(eq(settlements.groupId, groupId)).orderBy(asc(settlements.createdAt)),
     db
-      .select({ id: events.id, startDate: events.startDate, createdAt: events.createdAt })
-      .from(events)
-      .where(eq(events.groupId, groupId)),
+      .select()
+      .from(expenses)
+      .where(and(eq(expenses.groupId, groupId), expScope))
+      .orderBy(asc(expenses.date), asc(expenses.createdAt)),
+    db
+      .select()
+      .from(settlements)
+      .where(and(eq(settlements.groupId, groupId), setScope))
+      .orderBy(asc(settlements.createdAt)),
+    scope.kind === "group"
+      ? db
+          .select({ id: events.id, startDate: events.startDate, createdAt: events.createdAt })
+          .from(events)
+          .where(eq(events.groupId, groupId))
+      : Promise.resolve([]),
   ]);
 
   const expIds = expRows.map((e) => e.id);
@@ -71,6 +96,8 @@ export async function loadGroupLedger(db: DbOrTx, groupId: string): Promise<Grou
       totalAmount: e.totalAmount,
       date: e.date,
       deleted: e.deletedAt !== null,
+      giftId: e.giftId,
+      spaceId: e.spaceId,
       payers: (payersBy.get(e.id) ?? []).map((p) => ({ memberId: p.memberId, amount: p.amount })),
       shares: (sharesBy.get(e.id) ?? []).map((s) => ({ memberId: s.memberId, amount: s.amount })),
     })),
@@ -81,6 +108,9 @@ export async function loadGroupLedger(db: DbOrTx, groupId: string): Promise<Grou
       amount: s.amount,
       status: s.status,
       date: s.createdAt.toISOString().slice(0, 10),
+      giftId: s.giftId,
+      spaceId: s.spaceId,
+      purpose: s.purpose,
       allocations: (allocBy.get(s.id) ?? []).map((a) => ({ eventId: a.eventId, amount: a.amount })),
     })),
   };

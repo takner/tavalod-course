@@ -4,10 +4,14 @@ import { OnlineBanner } from "@/components/OnlineBanner";
 import { SyncProvider } from "@/components/SyncProvider";
 import { requireUser } from "@/lib/session";
 import { unreadNotificationCount } from "@/server/queries";
+import { generateReminders } from "@/server/reminders";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const unread = await unreadNotificationCount({ userId: user.id });
+  const actor = { userId: user.id };
+  // Lazily create due in-app reminders (deduplicated); a failure must never block the page.
+  await generateReminders(actor).catch((err) => console.error("reminders failed:", err));
+  const unread = await unreadNotificationCount(actor);
   return (
     <SyncProvider userId={user.id}>
       <AppHeader unread={unread} />

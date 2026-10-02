@@ -22,6 +22,20 @@
       "when": 1790853697838,
       "tag": "0002_login_token_uses",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790857189263,
+      "tag": "0003_phase2_birthdays",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790857200206,
+      "tag": "0004_phase2_privacy_triggers",
+      "breakpoints": true
     }
   ]
 }

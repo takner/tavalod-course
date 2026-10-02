@@ -99,7 +99,7 @@ export async function getGroupView(actor: Actor, groupId: string) {
   const pendingRows = await db
     .select()
     .from(settlements)
-    .where(and(eq(settlements.groupId, groupId), eq(settlements.status, "pending")))
+    .where(and(eq(settlements.groupId, groupId), eq(settlements.status, "pending"), isNull(settlements.spaceId)))
     .orderBy(desc(settlements.createdAt));
   const ledgerSettlementById = new Map(ledger.settlements.map((s) => [s.id, s]));
   const pending: PendingSettlementView[] = pendingRows.map((s) => {
@@ -277,7 +277,8 @@ export async function getActivity(actor: Actor, groupId: string) {
     .select({ log: auditLog, actorName: users.name })
     .from(auditLog)
     .innerJoin(users, eq(users.id, auditLog.actorId))
-    .where(eq(auditLog.groupId, groupId))
+    // Private-space entries never appear in the group's public activity.
+    .where(and(eq(auditLog.groupId, groupId), isNull(auditLog.spaceId)))
     .orderBy(desc(auditLog.at))
     .limit(ACTIVITY_LIMIT);
 }
@@ -346,6 +347,7 @@ export async function getMyAccount(actor: Actor) {
         .where(
           and(
             eq(settlements.status, "pending"),
+            isNull(settlements.spaceId),
             sql`(${inArray(settlements.fromMemberId, myMemberIds)} or ${inArray(settlements.toMemberId, myMemberIds)})`,
           ),
         )

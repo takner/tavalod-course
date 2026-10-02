@@ -1,9 +1,19 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
-import { events, settlementAllocations, settlements } from "@/db/schema";
+import { events, gifts, settlementAllocations, settlements } from "@/db/schema";
 import { autoAllocate, validateAllocations, type Allocation } from "@/domain/allocate";
 import { computeScopedBalances } from "@/domain/ledger";
-import { assertId, isAdmin, lockGroup, requireActiveMembers, requireMember, type Actor, type MemberRow } from "./access";
+import {
+  assertId,
+  isAdmin,
+  lockGroup,
+  requireActiveMembers,
+  requireMember,
+  requireSpaceMember,
+  requireSpaceMembers,
+  type Actor,
+  type MemberRow,
+} from "./access";
 import { notifyMembers, writeAudit } from "./audit";
 import { forbidden, invalid, notFound } from "./errors";
 import { claimIdempotencyKey } from "./idempotency";
@@ -12,7 +22,7 @@ import { loadGroupLedger } from "./ledger";
 
 /**
  * Who has to confirm a settlement: the receiver. If the receiver is a guest without an account,
- * a group admin confirms on their behalf.
+ * a group admin confirms on their behalf. Until confirmed, money is not counted as received.
  */
 function canDecide(actorMember: MemberRow, receiver: MemberRow): boolean {
   if (receiver.userId) return receiver.userId === actorMember.userId;
@@ -27,6 +37,11 @@ export async function createSettlement(
   const input = settlementInput.parse(raw);
   return getDb().transaction(async (tx) => {
     const me = await requireMember(tx, input.groupId, actor);
+    const spaceId = input.spaceId ?? null;
+    if (spaceId) {
+      const access = await requireSpaceMember(tx, spaceId, actor);
+      if (access.space.groupId !== input.groupId) throw notFound("صفحه");
+    }
     await lockGroup(tx, input.groupId);
     const idem = await claimIdempotencyKey(tx, actor, input.groupId, "settlement.create", idempotencyKey, raw);
     if (idem.replayed) {
@@ -37,16 +52,39 @@ export async function createSettlement(
     const parties = await requireActiveMembers(tx, input.groupId, [input.fromMemberId, input.toMemberId]);
     const from = parties.get(input.fromMemberId)!;
     const to = parties.get(input.toMemberId)!;
+    if (spaceId) await requireSpaceMembers(tx, spaceId, [from.id, to.id]);
     const isParty = from.id === me.id || to.id === me.id;
     if (!isParty && !isAdmin(me)) {
       throw forbidden("فقط پرداخت‌کننده، دریافت‌کننده یا مدیر گروه می‌تواند تسویه ثبت کند.");
     }
+
+    // Gift money: collection = handing money to the gift's holder; refund = holder paying it back.
+    const purpose = input.purpose ?? "settle";
+    const giftId = input.giftId ?? null;
+    if ((purpose === "settle") !== (giftId === null)) {
+      throw invalid("پرداخت مربوط به هدیه باید نوع مشخص (پرداخت سهم یا بازپرداخت) داشته باشد.");
+    }
+    if (giftId) {
+      if (!spaceId) throw invalid("پرداخت هدیه فقط داخل فضای خصوصی همان هدیه ثبت می‌شود.");
+      const [gift] = await tx.select().from(gifts).where(eq(gifts.id, giftId)).limit(1);
+      if (!gift || gift.spaceId !== spaceId) throw notFound("هدیه");
+      if (purpose === "collection") {
+        if (to.id !== gift.buyerMemberId) throw invalid("پرداخت سهم هدیه باید به مسئول خرید همان هدیه باشد.");
+        if (gift.status === "cancelled" || gift.status === "delivered") throw invalid("این هدیه دیگر پرداخت جدید نمی‌پذیرد.");
+      } else if (from.id !== gift.buyerMemberId) {
+        throw invalid("بازپرداخت هدیه از طرف مسئول خرید همان هدیه ثبت می‌شود.");
+      }
+    }
+
     // The receiver (or an admin for a guest receiver) recording it is itself the confirmation.
     const status = canDecide(me, to) ? "confirmed" : "pending";
 
-    const ledger = await loadGroupLedger(tx, input.groupId);
     let allocations: Allocation[];
-    if (input.allocations) {
+    if (spaceId) {
+      // Private money never touches event scopes.
+      if (input.allocations) throw invalid("پرداخت خصوصی به رویداد تخصیص داده نمی‌شود.");
+      allocations = [{ eventId: null, amount: input.amount }];
+    } else if (input.allocations) {
       allocations = validateAllocations(input.amount, input.allocations);
       const eventIds = allocations.map((a) => a.eventId).filter((x): x is string => x !== null);
       if (eventIds.length) {
@@ -57,6 +95,7 @@ export async function createSettlement(
         if (found.length !== new Set(eventIds).size) throw invalid("رویداد انتخاب‌شده برای تخصیص معتبر نیست.");
       }
     } else {
+      const ledger = await loadGroupLedger(tx, input.groupId);
       const scoped = computeScopedBalances(ledger.expenses, ledger.settlements, {
         settlementStatuses: ["confirmed", "pending"],
       });
@@ -73,6 +112,9 @@ export async function createSettlement(
         method: input.method,
         note: input.note || null,
         status,
+        spaceId,
+        giftId,
+        purpose,
         createdBy: actor.userId,
         decidedBy: status === "confirmed" ? actor.userId : null,
         decidedAt: status === "confirmed" ? new Date() : null,
@@ -89,12 +131,13 @@ export async function createSettlement(
       action: "create",
       actor,
       after: { ...row, allocations },
+      spaceId,
     });
-    const payload = { settlementId: row.id, amount: input.amount, fromMemberId: from.id, toMemberId: to.id };
+    const payload = { settlementId: row.id, amount: input.amount, fromMemberId: from.id, toMemberId: to.id, spaceId, giftId };
     if (status === "pending") {
-      await notifyMembers(tx, input.groupId, [to.id], actor, "settlement_pending", payload);
+      await notifyMembers(tx, input.groupId, [to.id], actor, "settlement_pending", payload, { spaceId });
     } else {
-      await notifyMembers(tx, input.groupId, [from.id], actor, "settlement_confirmed", payload);
+      await notifyMembers(tx, input.groupId, [from.id], actor, "settlement_confirmed", payload, { spaceId });
     }
     await idem.complete(row.id);
     return { settlementId: row.id, status, replayed: false };
@@ -112,6 +155,7 @@ export async function decideSettlement(
     const [peek] = await tx.select().from(settlements).where(eq(settlements.id, settlementId)).limit(1);
     if (!peek) throw notFound("تسویه");
     const me = await requireMember(tx, peek.groupId, actor);
+    if (peek.spaceId) await requireSpaceMember(tx, peek.spaceId, actor);
     await lockGroup(tx, peek.groupId);
     const [s] = await tx.select().from(settlements).where(eq(settlements.id, settlementId)).for("update");
     if (s.status !== "pending") throw invalid("وضعیت این تسویه قبلاً مشخص شده است.");
@@ -125,19 +169,29 @@ export async function decideSettlement(
       .set({ status, decidedBy: actor.userId, decidedAt: new Date() })
       .where(eq(settlements.id, settlementId))
       .returning();
-    await writeAudit(tx, { groupId: s.groupId, entityType: "settlement", entityId: s.id, action: decision, actor, before: s, after });
+    await writeAudit(tx, {
+      groupId: s.groupId,
+      entityType: "settlement",
+      entityId: s.id,
+      action: decision,
+      actor,
+      before: s,
+      after,
+      spaceId: s.spaceId,
+    });
     await notifyMembers(
       tx,
       s.groupId,
       [s.fromMemberId],
       actor,
       decision === "confirm" ? "settlement_confirmed" : "settlement_rejected",
-      { settlementId: s.id, amount: s.amount, fromMemberId: s.fromMemberId, toMemberId: s.toMemberId },
+      { settlementId: s.id, amount: s.amount, fromMemberId: s.fromMemberId, toMemberId: s.toMemberId, spaceId: s.spaceId, giftId: s.giftId },
+      { spaceId: s.spaceId },
     );
   });
 }
 
-/** Preview of the default allocation shown in the form before submitting. */
+/** Preview of the default allocation shown in the form before submitting (public ledger only). */
 export async function previewAllocation(
   actor: Actor,
   groupId: string,

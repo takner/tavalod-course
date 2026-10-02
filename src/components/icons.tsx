@@ -89,3 +89,19 @@ export const LinkIcon = (p: IconProps) => (
     <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
   </Svg>
 );
+export const CakeIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 20h16M5 20v-6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6M5 15.5c1.5 1 3 1 4.5 0s3-1 4.5 0 3 1 5 0M12 12V8" />
+    <path d="M12 4.5c.8.8.8 1.8 0 2.5-.8-.7-.8-1.7 0-2.5z" />
+  </Svg>
+);
+export const PollIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M5 20V11M12 20V4M19 20v-6" />
+  </Svg>
+);
+export const SparkIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18" />
+  </Svg>
+);
