@@ -1,45 +1,93 @@
-# tavalod (تولد)
+# تولد (tavalod) — پروژه آموزشی
 
-هماهنگی جمع دوستان، از برنامه‌ریزی تا تسویه — یک PWA فارسی و موبایل‌محور.
+[![CI](https://github.com/takner/tavalod-course/actions/workflows/ci.yml/badge.svg)](https://github.com/takner/tavalod-course/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**نسخه فعلی (مرحله ۱ — هسته مالی):** گروه، دعوت، عضو مهمان و اتصال آن با لینک اختصاصی یک‌بارمصرف، رویداد، هزینه با چهار نوع تقسیم و چند پرداخت‌کننده، برگشت خرید جزئی/کامل، مانده با توضیح قلم‌به‌قلم، «پیشنهاد تسویه با انتقال کمتر»، تسویه با تأیید دریافت‌کننده و تخصیص به رویدادها، سابقه تغییرات، اعلان داخل اپ، ثبت آفلاین هزینه و تسویه، ورود با لینک ایمیلی یا لینک شخصی صادرشده توسط مدیر.
+> **English summary:** A Persian (RTL), mobile-first PWA for groups of friends to plan birthdays, trips and gatherings — and to split, explain and settle the money. Built with Next.js 16, TypeScript, PostgreSQL and Drizzle, with exact `bigint` money, property-based tests, database integrity triggers, an offline queue, private "surprise" spaces and a production Docker deployment. This repository is published as teaching material; its history is organised as learning steps.
 
-**مرحله ۲ — تولد و دورهمی:** ویش‌لیست شخصی (کالا، کتاب الکترونیک، بلیت، تجربه؛ مدل/رنگ/سایز، لینک، قیمت دیده‌شده با منبع و تاریخ، اولویت، وضعیت، قبول جایگزین؛ نمایش فقط برای خودم/گروه‌های منتخب/لینک قابل لغو)، رزرو انحصاری آیتم که از صاحب فهرست پنهان است، ساخت تولد در یک قدم، فضای خصوصی سورپرایز (صاحب تولد هیچ دسترسی ندارد؛ حتی از مسیر مستقیم، API، RSC، اعلان‌ها، فعالیت و مانده‌ها)، هدیه گروهی با تعهد/سقف، پیش‌پرداخت با تأیید دریافت، خرید نهایی با رسید، لغو و بازپرداخت قابل پیگیری، نظرسنجی تک/چندانتخابی با مهلت و حالت نتیجه تجمیعی، حضور با همراهان، بودجه در برابر هزینه واقعی، چک‌لیست، محاسبه کیک، الگوهای برنامه، تاریخ تولد سالانه با نوع تقویم، یادآوری داخل اپ. برنامه و مثال عددی: `docs/phase2-plan.md`.
+«تولد» اپی برای هماهنگی جمع دوستان است: **از برنامه‌ریزی تا تسویه**. یک جمع می‌تواند هزینه‌های سفر و دورهمی را ثبت کند، سهم هر نفر را دقیق ببیند و تسویه کند؛ و یک تولد را از ویش‌لیست و نظرسنجی زمان تا هدیه گروهی سورپرایز مدیریت کند.
 
-اصل محصول: **حساب‌ها همیشه درست بمانند و هر عدد قابل توضیح باشد.** همه محاسبات مالی در `src/domain` با `bigint` و تست‌های property-based انجام می‌شود و تریگرهای دیتابیس جلوی ثبت حالت نامتوازن را می‌گیرند.
+این مخزن برای آموزش منتشر شده است: کد واقعی یک محصول کوچک اما کامل، با تست، استقرار و تصمیم‌های طراحی مستند.
 
-## اجرای محلی
+<p align="center">
+  <img src="docs/screenshots/02-group.png" width="220" alt="صفحه گروه">
+  <img src="docs/screenshots/03-event-organiser.png" width="220" alt="صفحه رویداد">
+  <img src="docs/screenshots/04-gift.png" width="220" alt="هدیه گروهی">
+</p>
 
-پیش‌نیاز: Node 24، Docker.
+## اصل محصول
+**حساب‌ها همیشه درست بمانند و هر عددی که نشان داده می‌شود قابل توضیح باشد.** به همین خاطر:
 
-```bash
-npm ci
-cp .env.example .env.local      # EMAIL_TRANSPORT=console لینک ورود را در ترمینال چاپ می‌کند
-npm run db:up                   # Postgres روی 127.0.0.1:5433
-npm run db:migrate
-npm run dev                     # http://localhost:3000
+- پول همیشه عدد صحیح تومان است (`bigint` در TypeScript، `int8` در PostgreSQL، رشته در JSON). هیچ‌جا اعشار.
+- همه محاسبات مالی در `src/domain/` هستند: توابع خالص، بدون دیتابیس، با تست‌های property-based.
+- مانده‌ها ذخیره نمی‌شوند؛ همیشه از هزینه‌ها و تسویه‌ها **مشتق** می‌شوند.
+- تریگرهای دیتابیس اجازه commit حالت نامتوازن را نمی‌دهند، حتی اگر کدی اشتباه کند.
+
+## قابلیت‌ها
+**مرحله ۱ — هسته مالی:** گروه و دعوت، عضو مهمان و اتصال آن با لینک یک‌بارمصرف، رویداد، هزینه با چهار نوع تقسیم (مساوی، مبلغ، درصد، وزنی) و چند پرداخت‌کننده، برگشت خرید، مانده با توضیح قلم‌به‌قلم، «پیشنهاد تسویه با انتقال کمتر»، تسویه با تأیید دریافت‌کننده، سابقه تغییرات، ثبت آفلاین با جلوگیری از ثبت تکراری، ورود با لینک ایمیلی.
+
+**مرحله ۲ — تولد و دورهمی:** ویش‌لیست با سطح نمایش و رزرو پنهان از صاحب آن، فضای خصوصی سورپرایز (صاحب تولد از هیچ مسیری چیزی نمی‌بیند)، هدیه گروهی با تعهد/پیش‌پرداخت/خرید جدا، نظرسنجی، حضور و همراهان، بودجه، چک‌لیست، محاسبه کیک، یادآوری داخل اپ.
+
+## فناوری‌ها
+Next.js 16 (App Router، Server Actions) · TypeScript · PostgreSQL 16 · Drizzle ORM · Tailwind CSS 4 · Zod · Vitest + fast-check · Playwright · Docker Compose + Traefik
+
+## معماری در یک نگاه
+```mermaid
+flowchart LR
+  UI["صفحات و فرم‌ها<br/>src/app, src/components"] -->|Server Actions / api/sync| S["سرویس‌ها<br/>src/server"]
+  S -->|تراکنش + قفل گروه + audit| DB[(PostgreSQL<br/>+ تریگرهای یکپارچگی)]
+  S --> D["منطق مالی خالص<br/>src/domain"]
+  UI -->|پیش‌نمایش سهم‌ها| D
+  UI <-->|صف آفلاین هر کاربر| IDB[(IndexedDB)]
 ```
-
-## تست
-
-```bash
-npm test               # unit + integration (دیتابیس tavalod_test پاک و از نو ساخته می‌شود)
-npm run e2e            # Playwright روی ویوپورت موبایل (دیتابیس tavalod_e2e)
-npm run typecheck && npm run lint
-```
-
-## ساختار
 
 | مسیر | محتوا |
 |---|---|
-| `src/domain` | منطق مالی خالص: تقسیم، مانده، تسویه، تخصیص، برگشت، توضیح مانده |
-| `src/db` | schema (Drizzle) — migrationها در `drizzle/` |
-| `src/server` | سرویس‌ها: تراکنش، قفل گروه، idempotency، audit، اعلان، احراز هویت |
-| `src/app` | صفحات و server actionها؛ `api/sync` برای صف آفلاین، `api/health` |
-| `src/lib/offline` | صف IndexedDB جدا برای هر حساب |
-| `deploy/` | Dockerfile، compose، اسکریپت‌های استقرار/بکاپ/rollback |
-| `docs/operations.md` | راهنمای استقرار، لاگ، بکاپ، بازیابی و rollback |
+| `src/domain` | تقسیم، مانده، تسویه، تخصیص، برگشت، هدیه، نظرسنجی، کیک، تقویم — خالص و تست‌شده |
+| `src/server` | سرویس‌ها: مجوزها، تراکنش‌ها، idempotency، audit، اعلان، احراز هویت |
+| `src/db` + `drizzle/` | schema و migrationها (شامل تریگرهای یکپارچگی) |
+| `src/app` | صفحات، Server Actionها، `api/sync`، `api/health` |
+| `tests/integration` | تست روی PostgreSQL واقعی (سناریوهای پذیرش، نشت اطلاعات، هم‌زمانی، migration) |
+| `e2e/` | Playwright روی ویوپورت موبایل (شامل سناریوی کامل تولد چهارنفره) |
+| `deploy/` | Dockerfile، Compose، استقرار، بکاپ، rollback |
+| `docs/` | راهنمای عملیات، برنامه مرحله ۲ با مثال عددی، [مسیر یادگیری](docs/learning-guide.md) |
 
-## نقشه راه
+## اجرای محلی
+پیش‌نیاز: Node.js 24 و Docker.
 
-۳. اقساط توافقی، کار خیر، Web Push، خوش‌حسابی، AI برای رسید و پیشنهاد · ۴. اتصال قیمت (ترب — ساختار ارائه‌دهنده مستقل و واکشی امن آماده ولی غیرفعال تا بررسی دسترسی)، درگاه پرداخت، کیف پول واقعی.
+```bash
+npm ci
+cp .env.example .env.local       # EMAIL_TRANSPORT=console: لینک ورود در ترمینال چاپ می‌شود
+npm run db:up                    # PostgreSQL روی 127.0.0.1:5433
+npm run db:migrate
+npm run dev                      # http://localhost:3000
+```
+
+برای ورود، ایمیل دلخواهی وارد کنید و لینک چاپ‌شده در ترمینال را باز کنید.
+
+## تست‌ها
+```bash
+npm run typecheck && npm run lint
+npm test          # واحد + یکپارچه (دیتابیس tavalod_test پاک و از نو ساخته می‌شود)
+npm run e2e       # Playwright (دیتابیس tavalod_e2e)
+```
+
+## مسیر یادگیری
+تاریخچه Git این مخزن مرحله‌به‌مرحله ساخته شده و هر مرحله یک تگ دارد (`step-01-domain` تا `step-07-public`). راهنمای قدم‌به‌قدم، نکات کلیدی هر مرحله و تمرین‌ها در [docs/learning-guide.md](docs/learning-guide.md) است.
+
+```bash
+git checkout step-01-domain   # شروع از هسته مالی
+git checkout main             # بازگشت به آخرین نسخه
+```
+
+## استقرار روی سرور خودتان
+راهنمای کامل: [docs/operations.md](docs/operations.md). خلاصه: `deploy/deploy.env.example` را به `deploy/deploy.env` کپی و مقادیر سرور خودتان را وارد کنید، سپس `deploy/deploy.sh init` و `deploy/deploy.sh`.
+
+## درباره استفاده از هوش مصنوعی
+این پروژه با کمک Claude Code ساخته شده و commitها این را با `Co-Authored-By` نشان می‌دهند. فایل [`CLAUDE.md`](CLAUDE.md) قواعدی است که دستیار هوش مصنوعی هنگام کار روی کد رعایت می‌کند؛ خواندن آن برای دیدن اینکه چطور می‌شود قواعد پروژه را برای انسان و ماشین صریح نوشت، مفید است.
+
+## مشارکت و امنیت
+راهنمای مشارکت: [CONTRIBUTING.md](CONTRIBUTING.md) · گزارش آسیب‌پذیری: [SECURITY.md](SECURITY.md) · آیین رفتاری: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+## مجوز
+کد تحت مجوز [MIT](LICENSE). فونت وزیرمتن تحت SIL Open Font License (`src/fonts/LICENSE-Vazirmatn`).

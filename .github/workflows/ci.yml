@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Types, lint, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tavalod
+          POSTGRES_PASSWORD: tavalod
+          POSTGRES_DB: tavalod_test
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tavalod -d tavalod_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://tavalod:tavalod@127.0.0.1:5433/tavalod_test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - name: Unit + integration tests (real PostgreSQL)
+        run: npm test
+      - name: Production build
+        run: npm run build
+        env:
+          DATABASE_URL: postgres://unused:unused@127.0.0.1:1/unused
+
+  e2e:
+    name: End-to-end (Playwright, mobile viewport)
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tavalod
+          POSTGRES_PASSWORD: tavalod
+          POSTGRES_DB: tavalod
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tavalod -d tavalod"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-results
+          path: test-results/
+          retention-days: 7

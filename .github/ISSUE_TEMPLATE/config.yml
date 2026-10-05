@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: گزارش آسیب‌پذیری امنیتی
+    url: https://github.com/takner/tavalod-course/security/advisories/new
+    about: مشکلات امنیتی را خصوصی گزارش دهید، نه در Issue عمومی.
