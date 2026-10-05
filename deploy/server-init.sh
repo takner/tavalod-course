@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# One-time (idempotent) server preparation for tavalod. Run ON THE SERVER as kian:
-#   bash server-init.sh
-# Creates the directory layout and generates secrets that never leave the server.
-# Existing files are never overwritten; secret values are never printed.
+# One-time (idempotent) server preparation for tavalod, normally run through `deploy/deploy.sh init`
+# (which passes TAVALOD_BASE and TAVALOD_DOMAIN). Creates the directory layout and generates secrets
+# that never leave the server. Existing files are never overwritten; secret values are never printed.
 set -euo pipefail
-BASE=/home/deploy/apps/tavalod
+: "${TAVALOD_BASE:?set TAVALOD_BASE}" "${TAVALOD_DOMAIN:?set TAVALOD_DOMAIN}"
+BASE="$TAVALOD_BASE"
 umask 077
 mkdir -p "$BASE"/{releases,shared,backups,ops}
 chmod 700 "$BASE" "$BASE/shared" "$BASE/releases" "$BASE/ops"
-chmod 755 "$BASE/backups" # the backup container writes here as uid 1000
+chmod 755 "$BASE/backups" # the backup container writes here as the deploy user's uid
 
 if [ ! -f "$BASE/shared/db.env" ]; then
   DB_PASSWORD=$(openssl rand -hex 24)
@@ -26,11 +26,11 @@ if [ ! -f "$BASE/shared/app.env" ]; then
   DB_PASSWORD=$(grep '^POSTGRES_PASSWORD=' "$BASE/shared/db.env" | cut -d= -f2-)
   cat > "$BASE/shared/app.env" <<EOF
 NODE_ENV=production
-APP_URL=https://tavalod.example.com
+APP_URL=https://$TAVALOD_DOMAIN
 DATABASE_URL=postgres://tavalod:$DB_PASSWORD@tavalod-db:5432/tavalod
 DATABASE_POOL_MAX=10
 EMAIL_TRANSPORT=smtp
-# Fill these in to enable sign-in emails, then: bash ~/apps/tavalod/current/deploy/restart-web.sh
+# Fill these in to enable sign-in emails, then: bash $BASE/current/deploy/restart-web.sh
 SMTP_HOST=
 SMTP_PORT=465
 SMTP_SECURE=true

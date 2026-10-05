@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Proves the latest tavalod backup restores, in an isolated throwaway container with no network
 # (container "tavalod-restoretest", removed at the end). Live data is untouched. Run ON THE SERVER:
-#   bash /home/deploy/apps/tavalod/current/deploy/restore-test.sh [dump-file]
+#   bash <TAVALOD_BASE>/current/deploy/restore-test.sh [dump-file]
 set -euo pipefail
-BASE=/home/deploy/apps/tavalod
+# shellcheck source=release-env.sh
+. "$(dirname "${BASH_SOURCE[0]}")/release-env.sh"
 DUMP="${1:-$(ls -1t "$BASE"/backups/tavalod-*.dump | head -n 1)}"
 NAME=tavalod-restoretest
 docker rm -f "$NAME" >/dev/null 2>&1 || true

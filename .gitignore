@@ -32,3 +32,7 @@ id_*
 .DS_Store
 npm-debug.log*
 .vercel
+
+# deployment settings of your own server
+/deploy/deploy.env
+/deploy/release.env

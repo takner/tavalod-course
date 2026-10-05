@@ -1,20 +1,31 @@
 #!/usr/bin/env bash
 # Server side of a deploy. Invoked by deploy/deploy.sh after the release has been unpacked into
-# /home/deploy/apps/tavalod/releases/<sha>. Touches only tavalod's own containers, image and files.
-#   bash remote-deploy.sh <sha>
+# $TAVALOD_BASE/releases/<sha>. Touches only tavalod's own containers, image and files.
+#   TAVALOD_BASE=… TAVALOD_DOMAIN=… TRAEFIK_*=… bash remote-deploy.sh <sha>
 set -euo pipefail
 umask 077
 SHA="$1"
-BASE=/home/deploy/apps/tavalod
+: "${TAVALOD_BASE:?}" "${TAVALOD_DOMAIN:?}" "${TRAEFIK_NETWORK:?}" "${TRAEFIK_ENTRYPOINT:?}" "${TRAEFIK_CERTRESOLVER:?}"
+BASE="$TAVALOD_BASE"
 REL="$BASE/releases/$SHA"
-URL=https://tavalod.example.com
 cd "$REL/deploy"
 
 for f in app.env db.env; do
-  [ -f "$BASE/shared/$f" ] || { echo "missing $BASE/shared/$f — run deploy/server-init.sh first" >&2; exit 1; }
+  [ -f "$BASE/shared/$f" ] || { echo "missing $BASE/shared/$f — run deploy/deploy.sh init first" >&2; exit 1; }
 done
-echo "TAVALOD_RELEASE=$SHA" > release.env
-C="docker compose -p tavalod -f compose.yml --env-file release.env"
+# Everything compose and the ops scripts need for this release.
+cat > release.env <<EOF
+TAVALOD_RELEASE=$SHA
+TAVALOD_BASE=$TAVALOD_BASE
+TAVALOD_DOMAIN=$TAVALOD_DOMAIN
+TAVALOD_UID=$(id -u)
+TAVALOD_GID=$(id -g)
+TRAEFIK_NETWORK=$TRAEFIK_NETWORK
+TRAEFIK_ENTRYPOINT=$TRAEFIK_ENTRYPOINT
+TRAEFIK_CERTRESOLVER=$TRAEFIK_CERTRESOLVER
+EOF
+# shellcheck source=release-env.sh
+. "$REL/deploy/release-env.sh"
 PREV=$(readlink "$BASE/current" 2>/dev/null | xargs -r basename || echo none)
 
 echo "==> building image tavalod:$SHA"

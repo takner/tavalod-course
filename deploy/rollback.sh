@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Project-scoped rollback of tavalod's web container to an earlier release (run ON THE SERVER):
-#   bash /home/deploy/apps/tavalod/current/deploy/rollback.sh [<sha>]
+#   bash <TAVALOD_BASE>/current/deploy/rollback.sh [<sha>]
 # Without an argument the release before the current one in ops/releases.log is used.
 # The database is NOT restored: migrations are additive/forward-only, so older code keeps working
 # with the newer schema. Restoring a backup would discard newer user data and must be a separate,
@@ -9,7 +9,8 @@
 # Compatibility guards: some older releases would mis-handle data written by newer ones. The guard
 # below checks the real data, not just the schema, and refuses instead of rolling back unsafely.
 set -euo pipefail
-BASE=/home/deploy/apps/tavalod
+# shellcheck source=release-env.sh
+. "$(dirname "${BASH_SOURCE[0]}")/release-env.sh"
 CUR=$(basename "$(readlink "$BASE/current")")
 TARGET="${1:-}"
 if [ -z "$TARGET" ]; then
@@ -18,7 +19,7 @@ fi
 [ -n "$TARGET" ] && [ -d "$BASE/releases/$TARGET" ] || { echo "release '$TARGET' not found" >&2; exit 1; }
 docker image inspect "tavalod:$TARGET" >/dev/null
 
-DB="docker compose -p tavalod -f $BASE/current/deploy/compose.yml --env-file $BASE/current/deploy/release.env exec -T db psql -U tavalod -d tavalod -Atc"
+DB="$C exec -T db psql -U tavalod -d tavalod -Atc"
 # Phase 2 (migration 0004) introduced private surprise spaces. Releases before it load every
 # expense/settlement of a group into the PUBLIC ledger, which would expose surprise money.
 if [ ! -f "$BASE/releases/$TARGET/drizzle/0004_phase2_privacy_triggers.sql" ]; then
@@ -31,11 +32,12 @@ if [ ! -f "$BASE/releases/$TARGET/drizzle/0004_phase2_privacy_triggers.sql" ]; t
   echo "guard: $TARGET predates private spaces; no private money rows exist, rollback is safe."
 fi
 
+# Same server settings as the current release, pointing at the target release.
+sed "s/^TAVALOD_RELEASE=.*/TAVALOD_RELEASE=$TARGET/" "$SCRIPT_DIR/release.env" > "$BASE/releases/$TARGET/deploy/release.env"
 cd "$BASE/releases/$TARGET/deploy"
-echo "TAVALOD_RELEASE=$TARGET" > release.env
 C="docker compose -p tavalod -f compose.yml --env-file release.env"
 $C up -d web backup
 for i in $(seq 1 40); do [ "$(docker inspect -f '{{.State.Health.Status}}' tavalod-web-1)" = healthy ] && break; sleep 3; done
 ln -sfn "$BASE/releases/$TARGET" "$BASE/current"
 echo "$(date -u +%FT%TZ) $TARGET rollback-from=$CUR" >> "$BASE/ops/releases.log"
-echo "rolled back to $TARGET: $(curl -fsS https://tavalod.example.com/api/health)"
+echo "rolled back to $TARGET: $(curl -fsS "$URL/api/health")"

@@ -1,5 +1,6 @@
 # tavalod production stack. Always run with the explicit project name and env file:
 #   docker compose -p tavalod -f compose.yml --env-file release.env <command>
+# Settings come from release.env (see deploy/deploy.env.example).
 # Only `web` joins the shared Traefik network; the database and backups stay on tavalod's own
 # internal network with no route to the internet and no published ports.
 name: tavalod
@@ -7,7 +8,7 @@ name: tavalod
 x-app: &app
   image: tavalod:${TAVALOD_RELEASE:?set TAVALOD_RELEASE}
   env_file:
-    - '${TAVALOD_SHARED:-/home/deploy/apps/tavalod/shared}/app.env'
+    - '${TAVALOD_BASE:?set TAVALOD_BASE}/shared/app.env'
   environment:
     APP_RELEASE: ${TAVALOD_RELEASE}
   restart: unless-stopped
@@ -24,7 +25,7 @@ services:
   db:
     image: postgres:16-alpine
     env_file:
-      - '${TAVALOD_SHARED:-/home/deploy/apps/tavalod/shared}/db.env'
+      - '${TAVALOD_BASE:?set TAVALOD_BASE}/shared/db.env'
     restart: unless-stopped
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -60,27 +61,27 @@ services:
         limits: { cpus: '1.0', memory: 512M, pids: 256 }
     labels:
       traefik.enable: 'true'
-      traefik.docker.network: internal_network
-      traefik.http.routers.tavalod-web.rule: Host(`tavalod.example.com`)
-      traefik.http.routers.tavalod-web.entrypoints: websecure
+      traefik.docker.network: ${TRAEFIK_NETWORK:?set TRAEFIK_NETWORK}
+      traefik.http.routers.tavalod-web.rule: Host(`${TAVALOD_DOMAIN:?set TAVALOD_DOMAIN}`)
+      traefik.http.routers.tavalod-web.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
       traefik.http.routers.tavalod-web.tls: 'true'
-      traefik.http.routers.tavalod-web.tls.certresolver: letsencrypt
+      traefik.http.routers.tavalod-web.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
       traefik.http.routers.tavalod-web.service: tavalod-web
       traefik.http.services.tavalod-web.loadbalancer.server.port: '3000'
 
   backup:
     image: postgres:16-alpine
     env_file:
-      - '${TAVALOD_SHARED:-/home/deploy/apps/tavalod/shared}/db.env'
+      - '${TAVALOD_BASE:?set TAVALOD_BASE}/shared/db.env'
     environment:
       PGHOST: tavalod-db
       PGUSER: tavalod
       PGDATABASE: tavalod
       BACKUP_RETENTION_DAYS: '14'
-    user: '1000:1000'
+    user: '${TAVALOD_UID:-1000}:${TAVALOD_GID:-1000}'
     entrypoint: ['/bin/sh', '/scripts/backup-loop.sh']
     volumes:
-      - '${TAVALOD_BACKUPS:-/home/deploy/apps/tavalod/backups}:/backups'
+      - '${TAVALOD_BASE:?set TAVALOD_BASE}/backups:/backups'
       - ./backup-loop.sh:/scripts/backup-loop.sh:ro
     networks: [internal]
     restart: unless-stopped
@@ -110,4 +111,4 @@ networks:
     internal: true
   proxy:
     external: true
-    name: internal_network
+    name: ${TRAEFIK_NETWORK:?set TRAEFIK_NETWORK}
